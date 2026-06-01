@@ -1,0 +1,102 @@
+# =============================================================================
+# AIA — full local stack.  `make up` (or `docker compose up -d`) starts everything.
+#
+# Services:
+#   postgres          relational store + pgvector (long-term semantic memory)
+#   redis             short-term memory + event bus (Redis Streams)
+#   ollama            local LLM inference (default reasoning engine)
+#   whatsapp-gateway  Node sidecar (Baileys QR pairing OR Meta Cloud API)
+#   gateway           inbound router: WhatsApp/email/calendar/phone -> agents
+#   business-agent    Agent 1 worker (executive assistant)
+#   health-agent      Agent 2 worker (health & diet coach)
+#   onboarding        local setup wizard (http://localhost:8088)
+# =============================================================================
+name: aia
+
+x-python-base: &python-base
+  build:
+    context: .
+    dockerfile: docker/python.Dockerfile
+  env_file: .env
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_started }
+  restart: unless-stopped
+  volumes:
+    - ./src:/app/src:ro          # hot-reload friendly in dev
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aia}
+      POSTGRES_DB: ${POSTGRES_DB:-aia}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aia}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    ports: ["6379:6379"]
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes: [ollama_models:/root/.ollama]
+    ports: ["11434:11434"]
+    # GPU note: on Linux with NVIDIA, uncomment to enable acceleration.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+  whatsapp-gateway:
+    build:
+      context: ./services/whatsapp-gateway
+    env_file: .env
+    ports: ["8085:8085"]
+    volumes:
+      - wa_auth:/app/auth_info     # persists the QR login session
+    restart: unless-stopped
+
+  gateway:
+    <<: *python-base
+    command: ["python", "-m", "aia.gateway.main"]
+    ports: ["8080:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      whatsapp-gateway: { condition: service_started }
+
+  business-agent:
+    <<: *python-base
+    command: ["python", "-m", "aia.agents.business.service"]
+
+  health-agent:
+    <<: *python-base
+    command: ["python", "-m", "aia.agents.health.service"]
+
+  onboarding:
+    build:
+      context: .
+      dockerfile: docker/onboarding.Dockerfile
+    env_file: .env
+    ports: ["8088:8088"]
+    volumes:
+      - ./src:/app/src:ro
+      - ./.env:/app/.env           # wizard writes connected-account config here
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  ollama_models:
+  wa_auth:
