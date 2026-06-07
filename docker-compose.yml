@@ -50,7 +50,15 @@ services:
 
   ollama:
     image: ollama/ollama:latest
-    volumes: [ollama_models:/root/.ollama]
+    # Bind-mount the host's `~/.ollama` so the `id_ed25519` keys created by
+    # `ollama signin` (and the pulled models) are shared with the container.
+    # Override OLLAMA_HOST_DIR in your shell/.env if your keys live elsewhere.
+    # Examples:
+    #   Linux/macOS : export OLLAMA_HOST_DIR=$HOME/.ollama
+    #   Windows PS : $env:OLLAMA_HOST_DIR = "$env:USERPROFILE\.ollama"
+    #   Windows cmd: set OLLAMA_HOST_DIR=%USERPROFILE%\.ollama
+    volumes:
+      - ${OLLAMA_HOST_DIR:-${USERPROFILE}/.ollama}:/root/.ollama
     ports: ["11434:11434"]
     # GPU note: on Linux with NVIDIA, uncomment to enable acceleration.
     # deploy:
