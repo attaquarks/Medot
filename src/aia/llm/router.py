@@ -100,6 +100,25 @@ class LLMRouter:
         resp = await litellm.aembedding(**kwargs)
         return resp["data"][0]["embedding"]
 
+    async def list_ollama_models(self) -> list[dict]:
+        """Return all models visible to the configured Ollama server.
+
+        Talks to GET {OLLAMA_BASE_URL}/api/tags. Works for both a local Ollama
+        container and Ollama Cloud (https://ollama.com) — the response is the
+        same shape, and `:cloud` models appear alongside locally-cached ones.
+        """
+        import httpx
+
+        base = get_settings().ollama_base_url.rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get(f"{base}/api/tags")
+                r.raise_for_status()
+                return r.json().get("models", [])
+        except Exception as exc:
+            log.warning("ollama_list_failed", base=base, error=str(exc))
+            return []
+
 
 @lru_cache
 def get_router() -> LLMRouter:

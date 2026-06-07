@@ -2,6 +2,8 @@
 
 Endpoints:
   GET  /health                      liveness + WhatsApp transport status
+  GET  /models                      models visible to the configured Ollama server
+  POST /test/message                drive one agent turn over HTTP (local env only)
   POST /webhook/whatsapp            inbound from the Baileys Node sidecar
   GET  /webhook/whatsapp/cloud      Meta Cloud API verification handshake
   POST /webhook/whatsapp/cloud      inbound from Meta Cloud API
@@ -20,6 +22,7 @@ from ..config import get_settings
 from ..events.bus import Event, Streams, get_bus
 from ..integrations.whatsapp import get_whatsapp
 from ..integrations.voice import get_voice_provider
+from ..llm.router import get_router
 from ..logging import configure_logging, get_logger
 from . import router as agent_router
 
@@ -40,6 +43,25 @@ async def health() -> dict:
     except Exception as exc:
         wa = {"error": str(exc)}
     return {"ok": True, "whatsapp": wa}
+
+
+@app.get("/models")
+async def list_models() -> dict:
+    """Return every model the configured Ollama server can serve.
+
+    Includes locally-cached models and any Ollama Cloud `:cloud` models you've
+    signed in for. Use the `name` field (e.g. "nemotron-3-super:cloud") as the
+    value for LLM_LOCAL_MODEL / LLM_EMBEDDING_MODEL in `.env`.
+    """
+    settings = get_settings()
+    models = await get_router().list_ollama_models()
+    return {
+        "base_url": settings.ollama_base_url,
+        "current_local": settings.llm_local_model,
+        "current_cloud": settings.llm_cloud_model,
+        "current_embed": settings.llm_embedding_model,
+        "models": models,
+    }
 
 
 @app.post("/test/message")
