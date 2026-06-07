@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uvicorn
 from fastapi import FastAPI, Request, Response
+from pydantic import BaseModel, Field
 
 from ..config import get_settings
 from ..events.bus import Event, Streams, get_bus
@@ -26,6 +27,12 @@ log = get_logger("gateway")
 app = FastAPI(title="AIA Gateway")
 
 
+class TestMessage(BaseModel):
+    agent: str = Field(pattern="^(business|health)$")
+    text: str
+    peer: str = "local-test"
+
+
 @app.get("/health")
 async def health() -> dict:
     try:
@@ -33,6 +40,27 @@ async def health() -> dict:
     except Exception as exc:
         wa = {"error": str(exc)}
     return {"ok": True, "whatsapp": wa}
+
+
+@app.post("/test/message")
+async def test_message(body: TestMessage) -> dict:
+    """Run one agent turn directly, without WhatsApp.
+
+    This endpoint is for local laptop testing. It exercises the same agent
+    reasoning loop and tools, but returns the reply in HTTP so setup can be
+    verified before pairing a WhatsApp device.
+    """
+    settings = get_settings()
+    if settings.env != "local":
+        return {"error": "test endpoint is only enabled when AIA_ENV=local"}
+
+    if body.agent == "health":
+        from ..agents.health.workflow import agent
+    else:
+        from ..agents.business.workflow import agent
+
+    reply = await agent.handle_message(settings.tenant_id, body.peer, body.text)
+    return {"agent": body.agent, "peer": body.peer, "reply": reply}
 
 
 @app.post("/webhook/whatsapp")
@@ -55,7 +83,8 @@ async def whatsapp_inbound(req: Request) -> dict:
 async def cloud_verify(req: Request) -> Response:
     """Meta verification handshake (hub.challenge)."""
     params = req.query_params
-    if params.get("hub.verify_token") and params.get("hub.challenge"):
+    expected = get_settings().whatsapp_cloud_verify_token
+    if expected and params.get("hub.verify_token") == expected and params.get("hub.challenge"):
         return Response(content=params.get("hub.challenge"), media_type="text/plain")
     return Response(status_code=403)
 

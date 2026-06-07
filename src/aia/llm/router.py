@@ -15,6 +15,7 @@ LiteLLM gives us a single API across Ollama, OpenAI and Anthropic.
 from __future__ import annotations
 
 from functools import lru_cache
+import json
 from typing import Any, Literal
 
 import litellm
@@ -49,7 +50,25 @@ class LLMRouter:
         if model.startswith("ollama/"):
             kwargs["api_base"] = get_settings().ollama_base_url
         resp = await litellm.acompletion(**kwargs)
-        return resp["choices"][0]["message"]["content"]
+        message = resp["choices"][0]["message"]
+        tool_calls = message.get("tool_calls") or []
+        if tool_calls:
+            blocks: list[str] = []
+            for call in tool_calls:
+                fn = call.get("function", {})
+                args = fn.get("arguments") or {}
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = {"raw": args}
+                blocks.append(
+                    "```tool\n"
+                    + json.dumps({"name": fn.get("name"), "arguments": args})
+                    + "\n```"
+                )
+            return "\n".join(blocks)
+        return message.get("content") or ""
 
     async def complete(
         self,

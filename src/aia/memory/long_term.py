@@ -11,6 +11,9 @@ from sqlalchemy import select
 from ..db.base import session_scope
 from ..db.models import LongTermMemory
 from ..llm.router import get_router
+from ..logging import get_logger
+
+log = get_logger("memory.long_term")
 
 
 class LongTermStore:
@@ -21,7 +24,11 @@ class LongTermStore:
     async def remember(
         self, tenant: str, content: str, *, kind: str = "fact", meta: dict | None = None
     ) -> str:
-        embedding = await self._llm.embed(content)
+        try:
+            embedding = await self._llm.embed(content)
+        except Exception as exc:
+            log.warning("semantic_memory_disabled", operation="remember", error=str(exc))
+            return ""
         async with session_scope() as s:
             row = LongTermMemory(
                 tenant_id=tenant,
@@ -37,7 +44,11 @@ class LongTermStore:
 
     async def recall(self, tenant: str, query: str, *, k: int = 5) -> list[str]:
         """Return the k most semantically relevant memories for this agent."""
-        q_emb = await self._llm.embed(query)
+        try:
+            q_emb = await self._llm.embed(query)
+        except Exception as exc:
+            log.warning("semantic_memory_disabled", operation="recall", error=str(exc))
+            return []
         async with session_scope() as s:
             stmt = (
                 select(LongTermMemory.content)

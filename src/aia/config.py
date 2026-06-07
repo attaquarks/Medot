@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     whatsapp_gateway_url: str = Field("http://localhost:8085", alias="WHATSAPP_GATEWAY_URL")
     whatsapp_cloud_token: str | None = Field(None, alias="WHATSAPP_CLOUD_TOKEN")
     whatsapp_cloud_phone_id: str | None = Field(None, alias="WHATSAPP_CLOUD_PHONE_ID")
+    whatsapp_cloud_verify_token: str | None = Field(None, alias="WHATSAPP_CLOUD_VERIFY_TOKEN")
 
     # ---- OAuth client apps ----
     google_client_id: str | None = Field(None, alias="GOOGLE_CLIENT_ID")
