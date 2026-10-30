@@ -10,10 +10,10 @@ help: ## Show this help
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: setup
-setup: ## First-run: copy env, build images, pull local models, run migrations
+setup: ## First-run: copy env, build images, pull host Ollama models, run migrations
 	@test -f .env || cp .env.example .env
 	$(COMPOSE) build
-	$(COMPOSE) up -d postgres redis ollama
+	$(COMPOSE) up -d postgres redis
 	./scripts/pull-models.sh
 	$(MAKE) migrate
 
@@ -39,8 +39,8 @@ migrate: ## Initialise/upgrade the database schema (idempotent)
 	$(COMPOSE) run --rm gateway python -m aia.db.init
 
 .PHONY: test
-test: ## Run the test suite
-	$(COMPOSE) run --rm gateway pytest -q
+test: ## Run the test suite (local uv; the container image has no dev deps)
+	uv run --extra dev pytest -q
 
 .PHONY: fmt
 fmt: ## Format & lint

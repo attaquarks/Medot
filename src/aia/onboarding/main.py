@@ -17,7 +17,7 @@ from pathlib import Path
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -36,11 +36,14 @@ _oauth = OAuthManager()
 _states: dict[str, str] = {}  # state -> provider (CSRF protection)
 
 
-async def _connected() -> dict[str, bool]:
+async def _connected() -> dict[str, list[str]]:
     async with session_scope() as s:
-        rows = (await s.execute(select(Credential.provider))).scalars().all()
-    have = set(rows)
-    return {"google": "google" in have, "microsoft": "microsoft" in have}
+        rows = (await s.execute(select(Credential.provider, Credential.account_label))).all()
+    res = {"google": [], "microsoft": []}
+    for provider, label in rows:
+        if provider in res and label:
+            res[provider].append(label)
+    return res
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -53,11 +56,44 @@ async def index(request: Request) -> HTMLResponse:
             wa_ok = (await http.get(f"{get_settings().whatsapp_gateway_url}/health")).json().get("connected", False)
     except Exception:
         pass
+    settings = get_settings()
     return templates.TemplateResponse(
-        "index.html",
-        {"request": request, "status": status, "wa_connected": wa_ok,
-         "gateway": get_settings().whatsapp_gateway_url},
+        request=request,
+        name="index.html",
+        context={
+            "request": request, 
+            "status": status, 
+            "wa_connected": wa_ok,
+            "gateway": settings.whatsapp_gateway_url,
+            "settings": settings
+        },
     )
+
+@app.post("/configure")
+async def configure(
+    request: Request,
+    enabled_agents: str = Form("business,health"),
+    llm_provider: str = Form("local"),
+    openai_api_key: str = Form(""),
+    anthropic_api_key: str = Form(""),
+    whatsapp_allowed_numbers: str = Form("")
+) -> RedirectResponse:
+    import dotenv
+    env_path = Path("/app/.env") if Path("/app/.env").exists() else Path(".env")
+    
+    dotenv.set_key(env_path, "ENABLED_AGENTS", enabled_agents)
+    dotenv.set_key(env_path, "WHATSAPP_ALLOWED_NUMBERS", whatsapp_allowed_numbers)
+    
+    if llm_provider == "openai":
+        dotenv.set_key(env_path, "LLM_FORCE_CLOUD", "1")
+        dotenv.set_key(env_path, "OPENAI_API_KEY", openai_api_key)
+    elif llm_provider == "anthropic":
+        dotenv.set_key(env_path, "LLM_FORCE_CLOUD", "1")
+        dotenv.set_key(env_path, "ANTHROPIC_API_KEY", anthropic_api_key)
+    else:
+        dotenv.set_key(env_path, "LLM_FORCE_CLOUD", "0")
+        
+    return RedirectResponse("/?saved=1", status_code=303)
 
 
 @app.get("/connect/{provider}")
@@ -86,10 +122,19 @@ async def whatsapp(request: Request) -> HTMLResponse:
             qr = (await http.get(f"{get_settings().whatsapp_gateway_url}/qr")).json().get("qr")
     except Exception as exc:
         log.warning("qr_fetch_failed", error=str(exc))
-    return templates.TemplateResponse("index.html", {"request": request, "qr": qr,
-                                                      "status": await _connected(),
-                                                      "wa_connected": False,
-                                                      "gateway": get_settings().whatsapp_gateway_url})
+    settings = get_settings()
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html", 
+        context={
+            "request": request, 
+            "qr": qr,
+            "status": await _connected(),
+            "wa_connected": False,
+            "gateway": settings.whatsapp_gateway_url,
+            "settings": settings
+        }
+    )
 
 
 def main() -> None:

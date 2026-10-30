@@ -36,3 +36,7 @@ npm-debug.log*
 pgdata/
 ollama_models/
 redisdata/
+
+# graphify machine-local interpreter state
+graphify-out/.graphify_python
+graphify-out/.graphify_root

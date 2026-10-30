@@ -4,7 +4,7 @@
 # Services:
 #   postgres          relational store + pgvector (long-term semantic memory)
 #   redis             short-term memory + event bus (Redis Streams)
-#   ollama            local LLM inference (default reasoning engine)
+#   external Ollama   local LLM inference running natively on the host
 #   whatsapp-gateway  Node sidecar (Baileys QR pairing OR Meta Cloud API)
 #   gateway           inbound router: WhatsApp/email/calendar/phone -> agents
 #   business-agent    Agent 1 worker (executive assistant)
@@ -44,27 +44,9 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--port", "6378", "--appendonly", "yes"]
     volumes: [redisdata:/data]
-    ports: ["6379:6379"]
-
-  ollama:
-    image: ollama/ollama:latest
-    # Bind-mount the host's `~/.ollama` so the `id_ed25519` keys created by
-    # `ollama signin` (and the pulled models) are shared with the container.
-    # Override OLLAMA_HOST_DIR in your shell/.env if your keys live elsewhere.
-    # Examples:
-    #   Linux/macOS : export OLLAMA_HOST_DIR=$HOME/.ollama
-    #   Windows PS : $env:OLLAMA_HOST_DIR = "$env:USERPROFILE\.ollama"
-    #   Windows cmd: set OLLAMA_HOST_DIR=%USERPROFILE%\.ollama
-    volumes:
-      - ${OLLAMA_HOST_DIR:-${USERPROFILE}/.ollama}:/root/.ollama
-    ports: ["11434:11434"]
-    # GPU note: on Linux with NVIDIA, uncomment to enable acceleration.
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+    ports: ["6378:6378"]
 
   whatsapp-gateway:
     build:
@@ -106,5 +88,4 @@ services:
 volumes:
   pgdata:
   redisdata:
-  ollama_models:
   wa_auth:

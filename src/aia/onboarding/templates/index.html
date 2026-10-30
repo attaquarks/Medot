@@ -3,70 +3,351 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AIA · Setup</title>
+  <title>AIA Onboarding</title>
   <style>
-    :root { --bg:#0f1115; --card:#171a21; --ink:#e8eaed; --muted:#9aa0a6; --ok:#34d399; --accent:#6ea8fe; }
-    * { box-sizing:border-box; } body { margin:0; font:16px/1.5 system-ui,Segoe UI,Roboto,sans-serif;
-      background:var(--bg); color:var(--ink); }
-    .wrap { max-width:760px; margin:0 auto; padding:48px 20px; }
-    h1 { font-size:1.7rem; margin:0 0 4px; } .sub { color:var(--muted); margin:0 0 32px; }
-    .step { background:var(--card); border:1px solid #232733; border-radius:14px; padding:20px 22px; margin:14px 0; }
-    .step h2 { font-size:1.05rem; margin:0 0 6px; } .step p { color:var(--muted); margin:0 0 14px; }
-    .row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-    .pill { font-size:.8rem; padding:3px 10px; border-radius:999px; background:#232733; color:var(--muted); }
-    .pill.ok { background:rgba(52,211,153,.15); color:var(--ok); }
-    a.btn, button.btn { display:inline-block; background:var(--accent); color:#0b0d12; text-decoration:none;
-      font-weight:600; border:0; border-radius:10px; padding:9px 16px; cursor:pointer; }
-    a.btn.secondary { background:#232733; color:var(--ink); }
-    .qr { background:#fff; padding:14px; border-radius:12px; width:max-content; margin-top:10px; }
-    .warn { font-size:.85rem; color:#f0b37e; border-left:3px solid #f0b37e; padding-left:10px; margin-top:10px; }
-    code { background:#232733; padding:2px 6px; border-radius:6px; }
+    /* CSS Variables for Light/Dark Glassmorphism */
+    :root {
+      --bg-gradient: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);
+      --glass-bg: rgba(255, 255, 255, 0.45);
+      --glass-border: rgba(255, 255, 255, 0.6);
+      --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+      --ink: #0f172a;
+      --muted: #475569;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --ok: #059669;
+      --ok-bg: rgba(5, 150, 105, 0.15);
+      --input-bg: rgba(255, 255, 255, 0.7);
+      --input-border: rgba(255, 255, 255, 0.8);
+      --card-radius: 20px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-gradient: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+        --glass-bg: rgba(30, 41, 59, 0.5);
+        --glass-border: rgba(255, 255, 255, 0.1);
+        --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+        --ink: #f8fafc;
+        --muted: #94a3b8;
+        --accent: #60a5fa;
+        --accent-hover: #93c5fd;
+        --ok: #34d399;
+        --ok-bg: rgba(52, 211, 153, 0.15);
+        --input-bg: rgba(15, 23, 42, 0.6);
+        --input-border: rgba(255, 255, 255, 0.15);
+      }
+    }
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg-gradient);
+      background-attachment: fixed;
+      color: var(--ink);
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 60px 20px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .header h1 {
+      font-size: 2.5rem;
+      margin: 0 0 10px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .header p {
+      color: var(--muted);
+      font-size: 1.1rem;
+      margin: 0;
+    }
+    .glass-panel {
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      box-shadow: var(--glass-shadow);
+      border-radius: var(--card-radius);
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+    .glass-panel h2 {
+      margin: 0 0 8px;
+      font-size: 1.3rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .glass-panel p {
+      color: var(--muted);
+      margin: 0 0 20px;
+      font-size: 0.95rem;
+    }
+    .pill {
+      font-size: 0.75rem;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .pill.ok {
+      background: var(--ok-bg);
+      color: var(--ok);
+      border-color: transparent;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      font-size: 0.95rem;
+    }
+    input[type="text"], input[type="password"], select {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 12px;
+      color: var(--ink);
+      font-family: inherit;
+      font-size: 1rem;
+      transition: all 0.2s ease;
+      box-sizing: border-box;
+    }
+    input[type="text"]:focus, input[type="password"]:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+    .checkbox-group {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .checkbox-item input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 24px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+    .btn:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+    .btn.secondary {
+      background: var(--input-bg);
+      color: var(--ink);
+      border: 1px solid var(--input-border);
+      box-shadow: none;
+    }
+    .btn.secondary:hover {
+      background: var(--glass-border);
+    }
+    .qr-container {
+      background: #ffffff;
+      padding: 20px;
+      border-radius: 16px;
+      display: inline-block;
+      margin: 10px 0 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    .account-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 20px;
+    }
+    .account-list li {
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      padding: 12px 16px;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 500;
+    }
+    .account-list li::before {
+      content: '✓';
+      color: var(--ok);
+      font-weight: bold;
+    }
+    .alert {
+      background: var(--ok-bg);
+      color: var(--ok);
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+      font-weight: 600;
+      text-align: center;
+      border: 1px solid var(--ok);
+    }
+    .hidden {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>🤖 Set up your assistants</h1>
-    <p class="sub">Connect your accounts once. Everything runs on this laptop; your tokens are encrypted and never leave it.</p>
-
-    <div class="step">
-      <div class="row"><h2>1 · Security key</h2><span class="pill ok">Ready</span></div>
-      <p>A master encryption key was created in your operating system's keychain. All connected accounts are encrypted with it.</p>
+  <div class="container">
+    <div class="header">
+      <h1>AIA Workspace Setup</h1>
+      <p>Configure your multi-agent personal assistant</p>
     </div>
 
-    <div class="step">
-      <div class="row">
-        <h2>2 · Email &amp; Calendar — Google</h2>
-        <span class="pill {{ 'ok' if status.google else '' }}">{{ 'Connected' if status.google else 'Not connected' }}</span>
+    <script>
+      if (window.location.search.includes('saved=1')) {
+        document.write('<div class="alert">Configuration saved successfully!</div>');
+      }
+    </script>
+
+    <form action="/configure" method="POST">
+      
+      <!-- Section 1: Agents -->
+      <div class="glass-panel">
+        <h2>1. Enable Agents <span class="pill ok">Active</span></h2>
+        <p>Select which agents should be active in your workspace.</p>
+        <div class="checkbox-group">
+          <label class="checkbox-item">
+            <input type="checkbox" id="agent-business" checked onchange="updateAgents()">
+            Business Assistant
+          </label>
+          <label class="checkbox-item">
+            <input type="checkbox" id="agent-health" checked onchange="updateAgents()">
+            Health & Diet Coach
+          </label>
+        </div>
+        <input type="hidden" name="enabled_agents" id="enabled-agents-input" value="business,health">
       </div>
-      <p>One sign-in connects Gmail and Google Calendar for the Business assistant.</p>
-      <a class="btn" href="/connect/google">{{ 'Reconnect' if status.google else 'Connect Google' }}</a>
-    </div>
 
-    <div class="step">
-      <div class="row">
-        <h2>2b · Email &amp; Calendar — Microsoft</h2>
-        <span class="pill {{ 'ok' if status.microsoft else '' }}">{{ 'Connected' if status.microsoft else 'Optional' }}</span>
+      <!-- Section 2: Email & Calendar -->
+      <div class="glass-panel">
+        <h2>2. Business Email & Calendar <span class="pill {{ 'ok' if status.google else '' }}">{{ status.google|length ~ ' Connected' if status.google else 'Pending' }}</span></h2>
+        <p>Connect your Gmail addresses to allow the Business Assistant to manage them.</p>
+        
+        {% if status.google %}
+        <ul class="account-list">
+          {% for email in status.google %}
+          <li>{{ email }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        
+        <a class="btn secondary" href="/connect/google">
+          {% if status.google %} + Connect another Google Account {% else %} Connect Google Account {% endif %}
+        </a>
       </div>
-      <p>Prefer Outlook / Microsoft 365? Connect that instead of (or alongside) Google.</p>
-      <a class="btn secondary" href="/connect/microsoft">Connect Microsoft</a>
-    </div>
 
-    <div class="step">
-      <div class="row">
-        <h2>3 · WhatsApp</h2>
-        <span class="pill {{ 'ok' if wa_connected else '' }}">{{ 'Paired' if wa_connected else 'Pair now' }}</span>
+      <!-- Section 3: WhatsApp -->
+      <div class="glass-panel">
+        <h2>3. WhatsApp Interface <span class="pill {{ 'ok' if wa_connected else '' }}">{{ 'Paired' if wa_connected else 'Action Required' }}</span></h2>
+        <p>Pair your secondary WhatsApp number by scanning the QR code, and specify which numbers are allowed to message it.</p>
+        
+        {% if qr %}
+          <div class="qr-container"><img src="{{ qr }}" alt="WhatsApp QR" width="260" height="260"/></div>
+        {% else %}
+          <div style="margin-bottom: 20px;">
+            <a class="btn secondary" href="/whatsapp">Generate Pairing QR Code</a>
+          </div>
+        {% endif %}
+
+        <div class="form-group">
+          <label>Allowed Phone Numbers (comma-separated, include country code e.g. +1234567890)</label>
+          <input type="text" name="whatsapp_allowed_numbers" value="{{ settings.whatsapp_allowed_numbers }}" placeholder="+1234567890, +0987654321" required>
+        </div>
       </div>
-      <p>Open WhatsApp → <em>Settings → Linked Devices → Link a Device</em> → scan this code.</p>
-      {% if qr %}<div class="qr"><img src="{{ qr }}" alt="WhatsApp QR" width="240" height="240"/></div>
-      {% else %}<a class="btn" href="/whatsapp">Show QR code</a>{% endif %}
-      <div class="warn">Default pairing uses an <strong>unofficial</strong> WhatsApp connection (against WhatsApp's Terms). Use a secondary number, or switch to the official Business API in <code>.env</code> (<code>WHATSAPP_PROVIDER=cloud</code>).</div>
-    </div>
 
-    <div class="step">
-      <div class="row"><h2>4 · Launch</h2><span class="pill">Last step</span></div>
-      <p>Once your accounts show <em>Connected</em>, start both assistants:</p>
-      <p><code>make up</code> &nbsp;— then message your WhatsApp number. Type <code>/health</code> to reach the diet coach.</p>
-    </div>
+      <!-- Section 4: LLM Configuration -->
+      <div class="glass-panel">
+        <h2>4. Intelligence Provider <span class="pill ok">Ready</span></h2>
+        <p>Choose whether to run entirely locally (Ollama) or use a cloud provider.</p>
+        
+        <div class="form-group">
+          <label>LLM Provider</label>
+          <select name="llm_provider" id="llm-select" onchange="toggleLlmFields()">
+            <option value="local" {% if settings.llm_force_cloud == False %}selected{% endif %}>Local Offline (Ollama)</option>
+            <option value="openai" {% if settings.openai_api_key %}selected{% endif %}>OpenAI (GPT-4o)</option>
+            <option value="anthropic" {% if settings.anthropic_api_key %}selected{% endif %}>Anthropic (Claude)</option>
+          </select>
+        </div>
+
+        <div class="form-group hidden" id="openai-group">
+          <label>OpenAI API Key</label>
+          <input type="password" name="openai_api_key" value="{{ settings.openai_api_key or '' }}" placeholder="sk-...">
+        </div>
+
+        <div class="form-group hidden" id="anthropic-group">
+          <label>Anthropic API Key</label>
+          <input type="password" name="anthropic_api_key" value="{{ settings.anthropic_api_key or '' }}" placeholder="sk-ant-...">
+        </div>
+      </div>
+
+      <div class="glass-panel" style="text-align: center; background: transparent; box-shadow: none; border: none; padding: 0;">
+        <button type="submit" class="btn" style="width: 100%; max-width: 300px; font-size: 1.1rem;">Save & Launch Configuration</button>
+      </div>
+
+    </form>
   </div>
+
+  <script>
+    function updateAgents() {
+      const b = document.getElementById('agent-business').checked;
+      const h = document.getElementById('agent-health').checked;
+      const arr = [];
+      if (b) arr.push('business');
+      if (h) arr.push('health');
+      document.getElementById('enabled-agents-input').value = arr.join(',');
+    }
+
+    function toggleLlmFields() {
+      const val = document.getElementById('llm-select').value;
+      document.getElementById('openai-group').classList.add('hidden');
+      document.getElementById('anthropic-group').classList.add('hidden');
+      if (val === 'openai') {
+        document.getElementById('openai-group').classList.remove('hidden');
+      } else if (val === 'anthropic') {
+        document.getElementById('anthropic-group').classList.remove('hidden');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const agents = "{{ settings.enabled_agents }}".split(',');
+      document.getElementById('agent-business').checked = agents.includes('business');
+      document.getElementById('agent-health').checked = agents.includes('health');
+      updateAgents();
+      toggleLlmFields();
+    });
+  </script>
 </body>
 </html>

@@ -7,16 +7,18 @@ JSON-serialisable dict that goes back to the model.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
+from ...config import get_settings
 from ...db.base import session_scope
 from ...db.models import Client
 from ...integrations.calendar import get_calendar_provider
 from ...integrations.email import get_email_provider
 from ...integrations.tasks import get_task_provider
 from ...integrations.whatsapp import get_whatsapp
-from ...llm.router import get_router
 from ...logging import get_logger
 from ...security.audit import audit
+from ..principal import principal_whatsapp
 from ..tools import ToolContext, ToolRegistry
 
 log = get_logger("business.tools")
@@ -24,14 +26,18 @@ registry = ToolRegistry()
 
 
 def _dt(s: str) -> datetime:
-    return datetime.fromisoformat(s)
+    """Parse an LLM-supplied ISO datetime; naive times get the configured timezone."""
+    dt = datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo(get_settings().timezone))
+    return dt
 
 
 # --------------------------- calendar ----------------------------------------
 @registry.tool("list_events", "List calendar events for a given ISO date.",
                {"type": "object", "properties": {"date": {"type": "string"}}, "required": ["date"]})
 async def list_events(*, ctx: ToolContext, date: str) -> dict:
-    cal = get_calendar_provider()
+    cal = get_calendar_provider(get_settings().calendar_provider)
     start = _dt(date + "T00:00:00")
     events = await cal.list_events(ctx.tenant_id, start, start + timedelta(days=1))
     return {"events": [{"id": e.get("id"), "title": e.get("summary"),
@@ -43,7 +49,7 @@ async def list_events(*, ctx: ToolContext, date: str) -> dict:
                    "date_range": {"type": "array", "items": {"type": "string"}},
                    "duration_min": {"type": "integer"}}, "required": ["date_range", "duration_min"]})
 async def check_availability(*, ctx: ToolContext, date_range: list[str], duration_min: int) -> dict:
-    cal = get_calendar_provider()
+    cal = get_calendar_provider(get_settings().calendar_provider)
     start, end = _dt(date_range[0] + "T08:00:00"), _dt(date_range[-1] + "T19:00:00")
     slots = await cal.free_slots(ctx.tenant_id, start, end, duration_min)
     return {"slots": [{"start": s.starts_at.isoformat(), "end": s.ends_at.isoformat()} for s in slots[:6]]}
@@ -55,7 +61,7 @@ async def check_availability(*, ctx: ToolContext, date_range: list[str], duratio
                    "end": {"type": "string"}, "attendees": {"type": "array", "items": {"type": "string"}}},
                 "required": ["title", "start", "end"]})
 async def create_meeting(*, ctx: ToolContext, title: str, start: str, end: str, attendees: list[str] | None = None) -> dict:
-    cal = get_calendar_provider()
+    cal = get_calendar_provider(get_settings().calendar_provider)
     eid = await cal.create_event(ctx.tenant_id, title, _dt(start), _dt(end), attendees or [])
     async with session_scope() as s:
         await audit(s, tenant_id=ctx.tenant_id, agent="business", action="create_meeting", resource=eid)
@@ -67,7 +73,7 @@ async def create_meeting(*, ctx: ToolContext, title: str, start: str, end: str, 
                    "event_id": {"type": "string"}, "new_start": {"type": "string"}, "new_end": {"type": "string"}},
                 "required": ["event_id", "new_start", "new_end"]})
 async def reschedule_meeting(*, ctx: ToolContext, event_id: str, new_start: str, new_end: str) -> dict:
-    cal = get_calendar_provider()
+    cal = get_calendar_provider(get_settings().calendar_provider)
     await cal.update_event(ctx.tenant_id, event_id, start=_dt(new_start), end=_dt(new_end))
     async with session_scope() as s:
         await audit(s, tenant_id=ctx.tenant_id, agent="business", action="reschedule_meeting", resource=event_id)
@@ -77,7 +83,7 @@ async def reschedule_meeting(*, ctx: ToolContext, event_id: str, new_start: str,
 @registry.tool("cancel_meeting", "Cancel an event by id.",
                {"type": "object", "properties": {"event_id": {"type": "string"}}, "required": ["event_id"]})
 async def cancel_meeting(*, ctx: ToolContext, event_id: str) -> dict:
-    await get_calendar_provider().cancel_event(ctx.tenant_id, event_id)
+    await get_calendar_provider(get_settings().calendar_provider).cancel_event(ctx.tenant_id, event_id)
     return {"event_id": event_id, "status": "cancelled"}
 
 
@@ -85,7 +91,7 @@ async def cancel_meeting(*, ctx: ToolContext, event_id: str) -> dict:
 @registry.tool("inbox_summary", "Summarize recent inbox messages with urgency tags.",
                {"type": "object", "properties": {"max_results": {"type": "integer"}}})
 async def inbox_summary(*, ctx: ToolContext, max_results: int = 15) -> dict:
-    emails = await get_email_provider().list_recent(ctx.tenant_id, max_results=max_results)
+    emails = await get_email_provider(get_settings().email_provider).list_recent(ctx.tenant_id, max_results=max_results)
     return {"count": len(emails),
             "messages": [{"id": e.external_id, "from": e.sender, "subject": e.subject,
                           "snippet": e.snippet} for e in emails]}
@@ -96,7 +102,7 @@ async def inbox_summary(*, ctx: ToolContext, max_results: int = 15) -> dict:
                    "to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}},
                 "required": ["to", "subject", "body"]})
 async def draft_email(*, ctx: ToolContext, to: str, subject: str, body: str) -> dict:
-    did = await get_email_provider().create_draft(ctx.tenant_id, to, subject, body)
+    did = await get_email_provider(get_settings().email_provider).create_draft(ctx.tenant_id, to, subject, body)
     return {"draft_id": did, "status": "draft_created"}
 
 
@@ -105,7 +111,7 @@ async def draft_email(*, ctx: ToolContext, to: str, subject: str, body: str) -> 
                    "to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}},
                 "required": ["to", "subject", "body"]})
 async def send_email(*, ctx: ToolContext, to: str, subject: str, body: str) -> dict:
-    mid = await get_email_provider().send(ctx.tenant_id, to, subject, body)
+    mid = await get_email_provider(get_settings().email_provider).send(ctx.tenant_id, to, subject, body)
     async with session_scope() as s:
         await audit(s, tenant_id=ctx.tenant_id, agent="business", action="send_email", resource=to)
     return {"message_id": mid, "status": "sent"}
@@ -145,14 +151,12 @@ async def remember_client(*, ctx: ToolContext, name: str, fact: str) -> dict:
                {"type": "object", "properties": {"reason": {"type": "string"}, "detail": {"type": "string"}},
                 "required": ["reason", "detail"]})
 async def escalate(*, ctx: ToolContext, reason: str, detail: str) -> dict:
-    # The principal's WhatsApp id is stored in tenant preferences; fall back to peer.
     msg = f"🔔 Escalation ({reason})\n{detail}\n\n— from {ctx.peer}"
-    await get_whatsapp().send_text(_principal_wa_id(ctx.tenant_id) or ctx.peer, msg)
+    target = await principal_whatsapp(ctx.tenant_id)
+    if not target:
+        log.warning("escalation_no_principal", reason=reason)
+        return {"status": "skipped", "reason": "no principal WhatsApp configured"}
+    await get_whatsapp().send_text(target, msg)
     async with session_scope() as s:
         await audit(s, tenant_id=ctx.tenant_id, agent="business", action="escalate", resource=reason)
     return {"status": "escalated"}
-
-
-def _principal_wa_id(tenant_id: str) -> str | None:
-    # TODO(impl): read tenant.preferences["principal_whatsapp"]; cached for speed.
-    return None

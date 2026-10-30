@@ -138,7 +138,7 @@ sequenceDiagram
 | `health-agent` | — | consumer worker |
 | `onboarding` | 8088 | setup wizard |
 | `postgres` | 5432 | data + vectors |
-| `redis` | 6379 | bus + short-term memory |
-| `ollama` | 11434 | local LLM |
+| `redis` | 6378 | bus + short-term memory |
+| native Ollama | 11434 | local LLM running on the host |
 
 See [06-deployment-and-onboarding.md](06-deployment-and-onboarding.md) for the runtime topology.

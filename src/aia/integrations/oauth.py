@@ -10,16 +10,21 @@ Used by the onboarding wizard:
 """
 from __future__ import annotations
 
+import base64
 import json
-import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 import httpx
+from sqlalchemy import select
 
 from ..config import get_settings
 from ..db.base import session_scope
 from ..db.models import Credential
 from ..security.crypto import get_cipher
+
+# Refresh when the token expires within this window (clock-skew safety).
+REFRESH_SKEW = timedelta(seconds=120)
 
 
 @dataclass(frozen=True)
@@ -91,37 +96,117 @@ class OAuthManager:
             token = resp.json()
         return await self._store(provider, tenant_id, token, cfg.scopes)
 
+    async def get_access_token(
+        self, tenant_id: str, provider: str, *, http: httpx.AsyncClient | None = None
+    ) -> str:
+        """Return a valid access token, refreshing via refresh_token when stale.
+
+        The refreshed token replaces the stored row in place (the refresh_token
+        is kept when the provider does not rotate it). Raises RuntimeError when
+        the provider was never connected or the token is expired with no
+        refresh_token — the user must re-run onboarding in that case.
+        """
+        token, expires_at = await self._load(tenant_id, provider)
+        if token is None:
+            raise RuntimeError(f"{provider} account not connected — run onboarding.")
+        if expires_at is not None and datetime.now(timezone.utc) - REFRESH_SKEW < expires_at:
+            return token["access_token"]
+
+        refresh = token.get("refresh_token")
+        if not refresh:
+            raise RuntimeError(
+                f"{provider} token expired and no refresh_token stored — reconnect via onboarding."
+            )
+        cfg = _providers()[provider]
+        client_id, client_secret = self._client(provider)
+        own = http is None
+        http = http or httpx.AsyncClient(timeout=30)
+        try:
+            resp = await http.post(cfg.token_url, data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh,
+                "grant_type": "refresh_token",
+            })
+            resp.raise_for_status()
+            new_token = resp.json()
+        finally:
+            if own:
+                await http.aclose()
+        merged = {**token, **new_token}  # keep the old refresh_token if not rotated
+        merged.setdefault("refresh_token", refresh)
+        await self._update(tenant_id, provider, merged)
+        return merged["access_token"]
+
     async def _store(self, provider: str, tenant_id: str, token: dict, scopes: list[str]) -> str:
         cipher = get_cipher()
         blob = cipher.encrypt(json.dumps(token))
-        expires_at = None
-        if "expires_in" in token:
-            expires_at = time.time() + int(token["expires_in"])
+        expires_at = _expires_at(token)
         async with session_scope() as s:
             cred = Credential(
                 tenant_id=tenant_id,
                 provider=provider,
-                account_label=token.get("email", ""),
+                account_label=_token_email(token),
                 encrypted_blob=blob,
                 scopes=" ".join(scopes),
+                expires_at=expires_at,
             )
             s.add(cred)
             await s.flush()
             return cred.id
 
+    async def _update(self, tenant_id: str, provider: str, token: dict) -> None:
+        """Replace the latest credential row's blob + expiry after a refresh."""
+        async with session_scope() as s:
+            row = await self._latest(s, tenant_id, provider)
+            if row:
+                row.encrypted_blob = get_cipher().encrypt(json.dumps(token))
+                row.expires_at = _expires_at(token)
+                row.account_label = _token_email(token) or row.account_label
+
+    @staticmethod
+    async def _latest(s, tenant_id: str, provider: str) -> Credential | None:
+        return (
+            await s.execute(
+                select(Credential)
+                .where(Credential.tenant_id == tenant_id, Credential.provider == provider)
+                .order_by(Credential.created_at.desc())
+            )
+        ).scalars().first()
+
+    @staticmethod
+    async def _load(tenant_id: str, provider: str) -> tuple[dict | None, datetime | None]:
+        """Decrypt and return the stored token dict + row expiry for a provider."""
+        async with session_scope() as s:
+            row = await OAuthManager._latest(s, tenant_id, provider)
+            if not row:
+                return None, None
+            exp = row.expires_at
+            if exp is not None and exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)  # SQLite drops the offset
+            return json.loads(get_cipher().decrypt(row.encrypted_blob)), exp
+
     @staticmethod
     async def load_token(tenant_id: str, provider: str) -> dict | None:
         """Decrypt and return the stored token dict for a provider (or None)."""
-        from sqlalchemy import select
+        token, _ = await OAuthManager._load(tenant_id, provider)
+        return token
 
-        async with session_scope() as s:
-            row = (
-                await s.execute(
-                    select(Credential)
-                    .where(Credential.tenant_id == tenant_id, Credential.provider == provider)
-                    .order_by(Credential.created_at.desc())
-                )
-            ).scalars().first()
-            if not row:
-                return None
-            return json.loads(get_cipher().decrypt(row.encrypted_blob))
+
+def _expires_at(token: dict) -> datetime | None:
+    if "expires_in" not in token:
+        return None
+    return datetime.now(timezone.utc) + timedelta(seconds=int(token["expires_in"]))
+
+
+def _token_email(token: dict) -> str:
+    """Best-effort account label: the `email` claim inside id_token, if present."""
+    raw = token.get("id_token")
+    if not raw:
+        return ""
+    try:
+        payload_b64 = raw.split(".")[1]
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4)))
+        return payload.get("email", "") or ""
+    except Exception:
+        return ""

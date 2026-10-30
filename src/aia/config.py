@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     env: Literal["local", "hosted"] = Field("local", alias="AIA_ENV")
     tenant_id: str = Field("default", alias="AIA_TENANT_ID")
     log_level: str = Field("INFO", alias="AIA_LOG_LEVEL")
+    enabled_agents: str = Field("business,health", alias="ENABLED_AGENTS")
+    # IANA timezone used for scheduled messages and calendar maths (naive times
+    # coming from the LLM are interpreted in this zone).
+    timezone: str = Field("UTC", alias="AIA_TIMEZONE")
+    # The owner's WhatsApp id (digits). Falls back to the first allowed number.
+    principal_whatsapp: str | None = Field(None, alias="AIA_PRINCIPAL_WHATSAPP")
 
     # ---- Secrets ----
     # Optional explicit master key (headless installs). On a laptop it is kept in
@@ -32,7 +38,7 @@ class Settings(BaseSettings):
     database_url: str = Field(
         "postgresql+asyncpg://aia:aia@localhost:5432/aia", alias="DATABASE_URL"
     )
-    redis_url: str = Field("redis://localhost:6379/0", alias="REDIS_URL")
+    redis_url: str = Field("redis://localhost:6378/0", alias="REDIS_URL")
 
     # ---- LLM (hybrid) ----
     ollama_base_url: str = Field("http://localhost:11434", alias="OLLAMA_BASE_URL")
@@ -51,6 +57,7 @@ class Settings(BaseSettings):
     whatsapp_cloud_token: str | None = Field(None, alias="WHATSAPP_CLOUD_TOKEN")
     whatsapp_cloud_phone_id: str | None = Field(None, alias="WHATSAPP_CLOUD_PHONE_ID")
     whatsapp_cloud_verify_token: str | None = Field(None, alias="WHATSAPP_CLOUD_VERIFY_TOKEN")
+    whatsapp_allowed_numbers: str = Field("", alias="WHATSAPP_ALLOWED_NUMBERS")
 
     # ---- OAuth client apps ----
     google_client_id: str | None = Field(None, alias="GOOGLE_CLIENT_ID")
@@ -73,11 +80,19 @@ class Settings(BaseSettings):
     nutritionix_app_id: str | None = Field(None, alias="NUTRITIONIX_APP_ID")
     nutritionix_api_key: str | None = Field(None, alias="NUTRITIONIX_API_KEY")
 
+    # ---- Email / Calendar provider selection (google | microsoft) ----
+    email_provider: Literal["gmail", "outlook"] = Field("gmail", alias="EMAIL_PROVIDER")
+    calendar_provider: Literal["google", "outlook"] = Field("google", alias="CALENDAR_PROVIDER")
+
+    # ---- Proactive flows ----
+    email_poll_seconds: int = Field(180, alias="EMAIL_POLL_SECONDS")
+
     # ---- Tasks ----
     tasks_provider: Literal["local", "notion", "todoist", "google_tasks"] = Field(
         "local", alias="TASKS_PROVIDER"
     )
     notion_token: str | None = Field(None, alias="NOTION_TOKEN")
+    notion_database_id: str | None = Field(None, alias="NOTION_DATABASE_ID")
     todoist_token: str | None = Field(None, alias="TODOIST_TOKEN")
 
     # ---- Onboarding ----

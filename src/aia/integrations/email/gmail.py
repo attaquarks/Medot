@@ -18,11 +18,8 @@ API = "https://gmail.googleapis.com/gmail/v1/users/me"
 
 class GmailProvider(EmailProvider):
     async def _access_token(self, tenant_id: str) -> str:
-        token = await OAuthManager.load_token(tenant_id, "google")
-        if not token:
-            raise RuntimeError("Google account not connected — run onboarding.")
-        # TODO(impl): refresh with refresh_token when expires_at has passed.
-        return token["access_token"]
+        # Auto-refreshes via refresh_token when the stored token has expired.
+        return await OAuthManager().get_access_token(tenant_id, "google")
 
     async def list_recent(self, tenant_id: str, *, max_results: int = 20) -> list[EmailMessage]:
         tok = await self._access_token(tenant_id)

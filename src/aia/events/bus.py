@@ -19,7 +19,6 @@ health.update}. The gateway tags each inbound WhatsApp event with the target age
 from __future__ import annotations
 
 import json
-import socket
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Awaitable, Callable
@@ -72,13 +71,19 @@ class EventBus:
         return msg_id
 
     async def consume(self, stream: str, group: str, handler: Handler) -> None:
-        """Block forever, dispatching events to `handler`. At-least-once delivery."""
-        consumer = f"{group}-{socket.gethostname()}"
+        """Block forever, dispatching events to `handler`. At-least-once delivery.
+
+        The consumer name is stable (= the group name), so after a restart the
+        consumer first drains its own pending entries — messages that were
+        delivered but not acked before the process died.
+        """
+        consumer = group
         try:
             await self._r.xgroup_create(stream, group, id="0", mkstream=True)
         except redis.ResponseError:
             pass  # group already exists
 
+        await self._drain_own_pending(stream, group, consumer, handler)
         log.info("consumer_started", stream=stream, group=group, consumer=consumer)
         while True:
             resp = await self._r.xreadgroup(
@@ -91,8 +96,34 @@ class EventBus:
                     try:
                         await handler(Event.decode(fields))
                         await self._r.xack(stream, group, msg_id)
-                    except Exception as exc:  # keep the loop alive; leave unacked for retry
+                    except Exception as exc:  # keep the loop alive; stays pending until restart
                         log.error("handler_error", stream=stream, id=msg_id, error=str(exc))
+
+    async def _drain_own_pending(
+        self, stream: str, group: str, consumer: str, handler: Handler
+    ) -> None:
+        """Replay this consumer's un-acked messages (restart recovery).
+
+        A message that fails again is acked anyway — one lost event after a
+        repeat failure beats an unbounded crash loop.
+        """
+        try:
+            while True:
+                resp = await self._r.xreadgroup(group, consumer, {stream: "0"}, count=10)
+                messages = resp[0][1] if resp else []
+                if not messages:
+                    break
+                for msg_id, fields in messages:
+                    if not fields:  # entry was deleted while pending
+                        await self._r.xack(stream, group, msg_id)
+                        continue
+                    try:
+                        await handler(Event.decode(fields))
+                    except Exception as exc:
+                        log.error("replayed_message_dropped", stream=stream, id=msg_id, error=str(exc))
+                    await self._r.xack(stream, group, msg_id)
+        except redis.ResponseError as exc:
+            log.warning("pending_replay_failed", stream=stream, error=str(exc))
 
 
 @lru_cache

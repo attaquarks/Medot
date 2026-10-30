@@ -3,7 +3,7 @@
 ## 6.1 One-command deploy
 
 ```bash
-make setup     # build images, start postgres/redis/ollama, pull models, init DB
+make setup     # build images, start postgres/redis, pull native Ollama models, init DB
 make onboard   # launch wizard at http://localhost:8088
 make up        # start gateway + both agents
 ```
@@ -17,21 +17,21 @@ users without `make`. Everything is **Docker Compose** ([`docker-compose.yml`](.
 |---|---|---|
 | postgres | `pgvector/pgvector:pg16` | `init.sql` enables vector + schemas |
 | redis | `redis:7-alpine` | append-only persistence |
-| ollama | `ollama/ollama` | local LLM; GPU optional |
+| native Ollama | host install | local LLM; install separately from Docker |
 | whatsapp-gateway | Node 20 (Baileys) | QR session persisted in a volume |
 | gateway | python.Dockerfile | webhooks → events |
 | business-agent / health-agent | python.Dockerfile | worker processes |
 | onboarding | onboarding.Dockerfile | setup wizard |
 
-Persistent volumes: `pgdata`, `redisdata`, `ollama_models`, `wa_auth`. `make clean` removes them.
+Persistent volumes: `pgdata`, `redisdata`, `wa_auth`. `make clean` removes them.
 
 ## 6.3 GPU / acceleration
 
 | OS | Recommendation |
 |---|---|
-| **macOS (Apple Silicon)** | Run **Ollama natively** (`brew install ollama`) for Metal GPU; point `OLLAMA_BASE_URL` at `http://host.docker.internal:11434`. Docker on Mac can't pass the GPU. |
-| **Linux + NVIDIA** | Install NVIDIA Container Toolkit, uncomment the `deploy.resources` GPU block in compose. |
-| **Windows + NVIDIA** | Docker Desktop + WSL2 GPU passthrough, or run Ollama natively on Windows. |
+| **macOS (Apple Silicon)** | Run **Ollama natively** (`brew install ollama`) for Metal GPU; point `OLLAMA_BASE_URL` at `http://host.docker.internal:11434`. |
+| **Linux + NVIDIA** | Run **Ollama natively** with GPU drivers installed; point containers at the host Ollama URL. |
+| **Windows + NVIDIA** | Run **Ollama natively** on Windows; point `OLLAMA_BASE_URL` at `http://host.docker.internal:11434`. |
 | **CPU-only** | Works with 7–8B Q4 models; expect 5–20 tok/s. Use cloud fallback for hard tasks. |
 
 ## 6.4 Onboarding wizard flow

@@ -16,12 +16,22 @@ if (-not (Test-Path ".env")) {
 Write-Host "Building images (first run downloads layers)..." -ForegroundColor Cyan
 docker compose build
 
-Write-Host "Starting datastore + local LLM..." -ForegroundColor Cyan
-docker compose up -d postgres redis ollama
+Write-Host "Checking native Ollama..." -ForegroundColor Cyan
+if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
+  throw "Native Ollama is required: https://ollama.com/download"
+}
+try {
+  ollama list | Out-Null
+} catch {
+  throw "Ollama is installed but not responding. Start Ollama on Windows, then rerun this script."
+}
 
-Write-Host "Pulling local models..." -ForegroundColor Cyan
-docker compose exec ollama ollama pull llama3.1:8b-instruct-q4_K_M
-docker compose exec ollama ollama pull nomic-embed-text
+Write-Host "Starting datastore..." -ForegroundColor Cyan
+docker compose up -d postgres redis
+
+Write-Host "Ensuring local models exist in native Ollama..." -ForegroundColor Cyan
+ollama pull llama3.1:8b-instruct-q4_K_M
+ollama pull nomic-embed-text
 
 Write-Host "Initialising database..." -ForegroundColor Cyan
 docker compose run --rm gateway python -m aia.db.init

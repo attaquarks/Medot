@@ -66,6 +66,14 @@ async function start() {
     for (const m of messages) {
       if (m.key.fromMe || !m.message) continue;
       const from = m.key.remoteJid || "";
+      // Only 1:1 chats: ignore groups, status broadcasts and newsletters.
+      if (
+        from.endsWith("@g.us") ||
+        from === "status@broadcast" ||
+        from.endsWith("@newsletter")
+      ) {
+        continue;
+      }
       const text =
         m.message.conversation ||
         m.message.extendedTextMessage?.text ||

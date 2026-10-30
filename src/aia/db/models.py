@@ -167,7 +167,7 @@ class CallLog(_PK, Base):
 class HealthProfile(_PK, Base):
     __tablename__ = "health_profile"
     __table_args__ = {"schema": SCHEMA_HEALTH}
-    sex: Mapped[str] = mapped_column(String(8), default="unspecified")
+    sex: Mapped[str] = mapped_column(String(16), default="unknown")
     age: Mapped[int] = mapped_column(Integer, default=30)
     height_cm: Mapped[float] = mapped_column(Float, default=170.0)
     weight_kg: Mapped[float] = mapped_column(Float, default=70.0)

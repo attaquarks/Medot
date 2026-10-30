@@ -16,10 +16,8 @@ API = "https://graph.microsoft.com/v1.0/me"
 
 class GraphEmailProvider(EmailProvider):
     async def _token(self, tenant_id: str) -> str:
-        tok = await OAuthManager.load_token(tenant_id, "microsoft")
-        if not tok:
-            raise RuntimeError("Microsoft account not connected — run onboarding.")
-        return tok["access_token"]
+        # Auto-refreshes via refresh_token when the stored token has expired.
+        return await OAuthManager().get_access_token(tenant_id, "microsoft")
 
     async def list_recent(self, tenant_id: str, *, max_results: int = 20) -> list[EmailMessage]:
         tok = await self._token(tenant_id)

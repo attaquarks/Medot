@@ -21,6 +21,23 @@ HEALTH_WORDS = (
 )
 
 
+def normalize_peer(peer: str) -> str:
+    """Reduce any WhatsApp id shape to bare digits: '15551234567@s.whatsapp.net' -> '15551234567'."""
+    return "".join(c for c in peer.split("@")[0] if c.isdigit())
+
+
+def is_allowed(peer: str, allowed: str) -> bool:
+    """Check an inbound peer against the WHATSAPP_ALLOWED_NUMBERS list.
+
+    An empty/unset list opens the gate (personal default) — callers should log
+    a warning once at startup in that case.
+    """
+    allowed_set = {normalize_peer(x) for x in allowed.split(",") if normalize_peer(x)}
+    if not allowed_set:
+        return True
+    return normalize_peer(peer) in allowed_set
+
+
 async def route(text: str, *, number_tag: str | None = None, use_llm: bool = False) -> str:
     """Return 'business' or 'health'."""
     if number_tag in ("business", "health"):

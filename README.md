@@ -160,11 +160,16 @@ top priorities): shared models/contracts live in one place; each container just 
 
 ## Project status
 
-This is a **runnable, coherent scaffold**: the infrastructure layer, agent framework, schema,
-provider abstractions, Docker stack and onboarding wizard are real and wired together. Individual
-integration calls and some tools are marked `# TODO(impl)` with the exact contract to fill in — see
-the [roadmap](docs/09-roadmap.md). It is intentionally a foundation you can ship on, not a finished
-SaaS.
+**End-to-end and production-leaning.** The infrastructure layer, agent framework, schema,
+Docker stack and onboarding wizard are wired together, and the integration surface is fully
+implemented: Gmail + Outlook email, Google + Outlook calendar, local/Notion/Todoist tasks,
+three nutrition providers, and OAuth tokens that **auto-refresh** before they expire. Inbound
+WhatsApp traffic is allow-listed (`WHATSAPP_ALLOWED_NUMBERS`), group chats and broadcasts are
+ignored, and proactive flows (morning brief, daily health check-in, weekly report, email
+triage via the poller) run on an in-process scheduler. Known trade-offs: the Baileys
+transport is unofficial (see the honesty note above), and long-term memory summarisation
+beyond the 20-turn Redis window is not yet automated. See the [roadmap](docs/09-roadmap.md)
+for what's next.
 
 ## License
 MIT — see [LICENSE](LICENSE).

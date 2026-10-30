@@ -34,13 +34,19 @@ async def on_whatsapp(event: Event) -> None:
     peer = event.payload["peer"]
     text = event.payload.get("text", "")
     wa = get_whatsapp()
-    await wa.send_typing(peer)
+    try:  # typing is best-effort; a down sidecar must not drop the reply
+        await wa.send_typing(peer)
+    except Exception as exc:
+        log.warning("send_typing_failed", peer=peer, error=str(exc))
     reply = await agent.handle_message(event.tenant_id, peer, text)
     await wa.send_text(peer, reply)
 
 
 async def on_health_update(event: Event) -> None:
     peer = event.payload.get("peer", "")
+    if not peer:
+        log.warning("health_update_missing_peer")
+        return
     note = event.payload.get("note", "")
     reply = await agent.handle_message(event.tenant_id, peer, note)
     await get_whatsapp().send_text(peer, reply)

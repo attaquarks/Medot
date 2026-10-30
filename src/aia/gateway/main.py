@@ -30,6 +30,15 @@ log = get_logger("gateway")
 app = FastAPI(title="AIA Gateway")
 
 
+def _gated(peer: str) -> bool:
+    """Allowlist check for inbound senders. Logs once when the gate is open."""
+    allowed = get_settings().whatsapp_allowed_numbers
+    ok = agent_router.is_allowed(peer, allowed)
+    if not ok:
+        log.warning("inbound_rejected_not_allowed", peer=agent_router.normalize_peer(peer))
+    return ok
+
+
 class TestMessage(BaseModel):
     agent: str = Field(pattern="^(business|health)$")
     text: str
@@ -91,6 +100,8 @@ async def whatsapp_inbound(req: Request) -> dict:
     body = await req.json()
     peer = body.get("from", "")
     text = body.get("text", "")
+    if not _gated(peer):
+        return {"routed_to": None, "rejected": True}
     settings = get_settings()
     agent = await agent_router.route(text, number_tag=body.get("number_tag"))
     await get_bus().publish(
@@ -121,6 +132,8 @@ async def cloud_inbound(req: Request) -> dict:
         text = msg.get("text", {}).get("body", "")
     except (KeyError, IndexError):
         return {"ignored": True}
+    if not _gated(peer):
+        return {"routed_to": None, "rejected": True}
     agent = await agent_router.route(text)
     await get_bus().publish(
         f"{Streams.WHATSAPP_INBOUND}.{agent}",
