@@ -163,27 +163,27 @@ create table public.memory_episodes (
 );
 
 -- Regenerable derived data: safe to re-embed wholesale if the model changes.
-create table public.memory_embeddings (
+-- OD-2 (Stage 2): dimension-partitioned tables — one per allowed embedding
+-- dimension, each declared by migration with its own HNSW index. Vectors from
+-- different models are NEVER compared: every similarity query filters on
+-- embed_model (and rows carry the domain scope for ownership filtering).
+create table public.memory_embeddings_1536 (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   domain_id uuid references public.knowledge_domains(id),   -- null = global scope
   ref_type text not null check (ref_type in ('episode','node','record','edge','summary')),
   ref_id uuid not null,
-  embedding vector(1536) not null,               -- pgvector; dims fixed, see note
+  embedding vector(1536) not null,
   embed_model text not null,
   content_hash text not null,
   created_at timestamptz not null default now()
 );
-create index on public.memory_embeddings
-  using hnsw (embedding vector_cosine_ops);
-create index on public.memory_embeddings (user_id, domain_id, ref_type, ref_id);
-```
+create index on public.memory_embeddings_1536 using hnsw (embedding vector_cosine_ops);
+create index on public.memory_embeddings_1536 (user_id, domain_id, ref_type, ref_id);
 
-> **Embedding-dimension note.** pgvector fixes dimension per column. The MVP
-> standardizes on a 1536-dim profile (OpenAI `text-embedding-3-small` or any
-> 1536-dim OpenAI-compatible model). Switching to a different dimension
-> triggers a background **re-embed job** — embeddings are derived data, so
-> this is safe. Recorded as an open decision in `10-open-decisions.md`.
+-- 768 (local nomic-class) and 1024 variants share the identical shape and are
+-- created by the same migration; the repository's KnowledgeService selects the
+-- table from the embedding profile's declared dimension.
 
 ## 4. Dynamic domain records
 

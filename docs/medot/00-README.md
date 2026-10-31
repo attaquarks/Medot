@@ -24,6 +24,7 @@ the new direction.
 | [08-providers-connectors-browser.md](08-providers-connectors-browser.md) | Model profiles, provider adapters, connector registry, browser capability |
 | [09-migration-roadmap.md](09-migration-roadmap.md) | Existing-code audit, migration strategy, target repo layout, milestones 1–8, first milestone acceptance criteria |
 | [10-open-decisions.md](10-open-decisions.md) | Technical risks and decisions that remain open, with owners and trigger points |
+| [11-framework-integration.md](11-framework-integration.md) | LangChain/LangGraph/LiteLLM/MCP integration contract, approval flow, checkpointer rules, PoC plan |
 
 ## The one governing principle
 

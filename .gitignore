@@ -40,3 +40,20 @@ redisdata/
 # graphify machine-local interpreter state
 graphify-out/.graphify_python
 graphify-out/.graphify_root
+
+# Medot runtime
+runtime/venv/
+runtime/dist/
+runtime/build/
+runtime/*.spec
+
+# Medot desktop
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/src-tauri/binaries/
+
+# Local Supabase dev stack artifacts
+supabase/.branches/
+supabase/.temp/

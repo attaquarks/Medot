@@ -1,0 +1,69 @@
+name: medot-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["runtime/**", "supabase/**", "desktop/**", ".github/workflows/medot-ci.yml"]
+  pull_request:
+    paths: ["runtime/**", "supabase/**", "desktop/**", ".github/workflows/medot-ci.yml"]
+
+jobs:
+  runtime:
+    name: Runtime tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Run tests (integration tests skip without a Supabase stack)
+        run: uv run --extra dev pytest tests/ -q
+      - name: Lint
+        run: uv run --extra dev ruff check medot tests
+
+  supabase:
+    name: Supabase migrations + RLS suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start local stack (applies migrations; idempotency = re-run)
+        working-directory: supabase
+        run: |
+          supabase start
+          supabase db reset
+      - name: Export local-stack keys for tests (generated at runtime, never committed)
+        working-directory: supabase
+        run: |
+          status=$(supabase status -o env)
+          echo "MEDOT_TEST_SUPABASE_URL=$(echo "$status" | grep '^API_URL=' | cut -d= -f2-)" >> "$GITHUB_ENV"
+          echo "MEDOT_TEST_SUPABASE_KEY=$(echo "$status" | grep '^ANON_KEY=' | cut -d= -f2-)" >> "$GITHUB_ENV"
+          echo "MEDOT_TEST_SUPABASE_SERVICE_KEY=$(echo "$status" | grep '^SERVICE_ROLE_KEY=' | cut -d= -f2-)" >> "$GITHUB_ENV"
+      - uses: astral-sh/setup-uv@v5
+      - name: Integration tests (RLS isolation, bootstrap, records)
+        working-directory: runtime
+        run: uv run --extra dev pytest tests/ -q
+
+  desktop:
+    name: Desktop compile + frontend build
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust check
+        working-directory: desktop/src-tauri
+        run: cargo check

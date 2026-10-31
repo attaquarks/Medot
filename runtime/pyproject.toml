@@ -1,0 +1,32 @@
+[project]
+name = "medot-runtime"
+version = "0.1.0"
+description = "Medot local runtime: Supabase foundation, keystore, loopback service API."
+requires-python = ">=3.11"
+dependencies = [
+  "supabase>=2.5",
+  "keyring>=25.0",
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+  "pydantic>=2.6",
+  "pydantic-settings>=2.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "httpx>=0.27", "ruff>=0.4", "pyinstaller>=6.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["medot"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff.lint.per-file-ignores]
+# Integration tests intentionally assert broad failures (RLS rejections) and
+# probe network availability.
+"tests/*" = ["B017", "BLE001"]

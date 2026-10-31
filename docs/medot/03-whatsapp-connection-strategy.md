@@ -78,3 +78,33 @@ alternative; Agent Platform tracked as the future sanctioned path.**
   re-pair); if bans become common at low volume, Cloud API becomes default.
 - **Cloud API template rules relax** for 1:1 utility messaging → re-evaluate
   cost/UX balance.
+
+## 6. OD-3 (Stage 2): the centralized Cloud API option — analysis, no decision yet
+
+Requirement: onboarding simple enough for a non-technical user, without forcing
+a second SIM purchase. The third architecture worth evaluating is **one official
+WhatsApp Business number operated by Medot, shared by all users**:
+
+| Concern | Centralized Cloud API (one Medot number) |
+|---|---|
+| Onboarding | Best possible: user just messages the published Medot number — no QR, no SIM purchase. Account linking = verify ownership of that WhatsApp account (e.g. confirm a code Medot sends) |
+| Multi-user identification | Inbound webhook carries the sender `wa_id` (per-user); Medot maps `wa_id → user_id` after verification. One conversation per user — fits the "one WhatsApp identity" model exactly |
+| Outbound / proactive | 24-h customer-service window per user; **outside it only pre-approved templates** — daily briefs must ship as utility templates (Meta approval per template + per-category pricing). Service messages re-charged Oct 2026 with 1,000 free/month **per number — shared across ALL users**, a hard scaling ceiling |
+| Message routing to the user's runtime | Requires a **Medot-operated relay**: cloud webhook receiver → per-user fan-out → the user's desktop runtime over a persistent outbound connection (desktop dials out; no inbound ports). Offline desktops need server-side queueing with replay + TTL, and the relay must never store message bodies beyond delivery (privacy) |
+| Infrastructure | Always-on cloud service (webhook + queue + relay auth) — the product's first server component, with 24×7 availability expectations; a real cost and ops commitment the desktop-only MVP avoids |
+| Privacy / isolation | Multi-tenant number: Meta sees one traffic pattern; tenant isolation enforced in the relay; risk of cross-user routing bugs is a new failure class that local-only transports don't have |
+| Costs & limits | Per delivered message (1,000 free service msgs/month per number), 250-recipient tier initially; template approvals add review latency for every new proactive message type |
+| Policy | Fully official — no ToS risk, no ban exposure |
+
+**Trade-off summary**: the centralized number wins decisively on onboarding
+friction and policy safety, and loses on: a mandatory always-on relay service
+(first server component, contradicts the desktop-local MVP), template
+constraints on proactive messages, shared free-tier limits, and new
+multi-tenant routing/privacy failure modes. The companion-number Baileys
+transport keeps the product fully local but requires a SIM.
+
+**Status**: OPEN. No transport is implemented in Milestone 1; the decision
+deadline is **Milestone 5 planning**, and the transport abstraction (§4) keeps
+all three options implementable. The relay design (persistent outbound
+connection + queueing) is a prerequisite if this option is chosen and must be
+prototyped before commitment.

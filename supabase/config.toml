@@ -1,0 +1,28 @@
+# Medot local Supabase stack (dev/CI only — end users never run this).
+project_id = "medot"
+
+[api]
+port = 54321
+
+[db]
+port = 54322
+
+[studio]
+port = 54323
+
+[inbucket]
+port = 54324
+
+[auth]
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["medot://auth/callback"]
+
+[auth.email]
+enable_signup = true
+
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
+redirect_uri = "http://localhost:54321/auth/v1/callback"
+skip_nonce_check = false
