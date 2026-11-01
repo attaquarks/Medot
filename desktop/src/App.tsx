@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Medot Desktop — onboarding console.
  *
- * Flow: sign in with Google -> connect WhatsApp (paste the agent API key
- * from WhatsApp's Agent Manager) -> chat with Me. on WhatsApp.
+ * Flow: sign in with Google -> connect WhatsApp -> chat with Me. on WhatsApp.
+ * WhatsApp supports two routes (docs/medot/03, decision 2026-11-02):
+ *   • Official Agent Platform — paste the agent API key from WhatsApp.
+ *   • Baileys bridge (unofficial) — scan a QR like WhatsApp Web.
+ * Either or both can be connected at the same time.
  * Talks to the local runtime (127.0.0.1, launch-token auth).
  */
 
@@ -44,6 +47,20 @@ export async function completeDeepLink(url: string) {
   }
 }
 
+type RouteStatus = {
+  transport: string;
+  connected?: boolean;
+  running?: boolean;
+  error?: string | null;
+  connected_at?: string | null;
+};
+
+type WaStatus = {
+  agent_platform: RouteStatus;
+  baileys: RouteStatus;
+  any_connected: boolean;
+};
+
 type SessionState =
   | { status: "connecting" }
   | { status: "runtime_down" }
@@ -51,12 +68,24 @@ type SessionState =
   | { status: "signing_in" }
   | { status: "connect_whatsapp" }
   | { status: "connecting_whatsapp" }
-  | { status: "ready"; user_id: string; connected_at: string | null };
+  | { status: "ready"; user_id?: string };
 
 export default function App() {
   const [state, setState] = useState<SessionState>({ status: "connecting" });
   const [error, setError] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [waStatus, setWaStatus] = useState<WaStatus | null>(null);
+  const [route, setRoute] = useState<"choice" | "agent_platform" | "baileys">("choice");
+  const [baileysMode, setBaileysMode] = useState<"self" | "bot">("self");
+  const [qr, setQr] = useState<string | null>(null);
+  const [baileysPaired, setBaileysPaired] = useState(false);
+  const qrPolling = useRef(false);
+
+  const refreshWaStatus = useCallback(async () => {
+    const s = await api<WaStatus>("/whatsapp/status");
+    setWaStatus(s);
+    return s;
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -65,21 +94,13 @@ export default function App() {
         setState({ status: "signed_out" });
         return;
       }
-      const wa = await api<{ connected: boolean; connected_at: string | null }>("/whatsapp/status");
-      if (!wa.connected) {
-        setState({ status: "connect_whatsapp" });
-        return;
-      }
-      setState({
-        status: "ready",
-        user_id: session.user_id!,
-        connected_at: wa.connected_at,
-      });
+      const s = await refreshWaStatus();
+      setState({ status: s.any_connected ? "ready" : "connect_whatsapp", user_id: session.user_id! });
     } catch (err) {
       setError(String(err));
       setState({ status: "runtime_down" });
     }
-  }, []);
+  }, [refreshWaStatus]);
 
   useEffect(() => {
     refresh();
@@ -103,21 +124,75 @@ export default function App() {
     }
   }, [refresh]);
 
-  const connectWhatsapp = useCallback(async () => {
+  // ---- Route 1: official Agent Platform ----------------------------------
+  const connectAgentPlatform = useCallback(async () => {
     setError("");
     setState({ status: "connecting_whatsapp" });
     try {
-      await api("/whatsapp/connect", {
+      await api("/whatsapp/agent-platform/connect", {
         method: "POST",
         body: JSON.stringify({ api_key: apiKey }),
       });
       setApiKey("");
-      await refresh();
+      const s = await refreshWaStatus();
+      setState({ status: s.any_connected ? "ready" : "connect_whatsapp" });
     } catch (err) {
       setError(String(err));
       setState({ status: "connect_whatsapp" });
     }
-  }, [apiKey, refresh]);
+  }, [apiKey, refreshWaStatus]);
+
+  // ---- Route 2: Baileys bridge -------------------------------------------
+  const connectBaileys = useCallback(async () => {
+    setError("");
+    setState({ status: "connecting_whatsapp" });
+    try {
+      await api("/whatsapp/baileys/connect", {
+        method: "POST",
+        body: JSON.stringify({ mode: baileysMode }),
+      });
+      // Poll for the QR until paired (QRs refresh ~20 s on WhatsApp's side).
+      qrPolling.current = true;
+      for (let i = 0; i < 300 && qrPolling.current; i++) {
+        const { qr: newQr, paired } = await api<{ qr: string | null; paired: boolean }>(
+          "/whatsapp/baileys/qr",
+        );
+        setQr(newQr);
+        setBaileysPaired(paired);
+        if (paired) {
+          const s = await refreshWaStatus();
+          setState({ status: s.any_connected ? "ready" : "connect_whatsapp" });
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    } catch (err) {
+      setError(String(err));
+      setState({ status: "connect_whatsapp" });
+    } finally {
+      qrPolling.current = false;
+    }
+  }, [baileysMode, refreshWaStatus]);
+
+  const disconnect = useCallback(
+    async (which: "agent-platform" | "baileys") => {
+      setError("");
+      try {
+        await api(`/whatsapp/${which}/disconnect`, { method: "POST" });
+        const s = await refreshWaStatus();
+        setState({ status: s.any_connected ? "ready" : "connect_whatsapp" });
+      } catch (err) {
+        setError(String(err));
+      }
+    },
+    [refreshWaStatus],
+  );
+
+  const routeBadge = (s: RouteStatus | undefined) => {
+    if (!s?.connected) return <span style={styles.badgeOff}>Not connected</span>;
+    if (s.error) return <span style={styles.badgeWarn}>Error: {s.error}</span>;
+    return <span style={styles.badgeOn}>Connected</span>;
+  };
 
   return (
     <main style={styles.shell}>
@@ -142,7 +217,7 @@ export default function App() {
             </p>
             <ol style={styles.steps}>
               <li>Sign in with Google — creates your personal space.</li>
-              <li>Connect WhatsApp — paste your Medot agent key.</li>
+              <li>Connect WhatsApp — official API or QR scan, your choice.</li>
             </ol>
             <button style={styles.primaryBtn} onClick={signIn}>
               Sign in with Google
@@ -154,10 +229,36 @@ export default function App() {
           <p>Finish signing in with Google in your browser…</p>
         )}
 
-        {state.status === "connect_whatsapp" && (
+        {state.status === "connect_whatsapp" && route === "choice" && (
+          <>
+            <p style={styles.lede}>Connect Medot to WhatsApp — pick a route:</p>
+            <button style={styles.routeCard} onClick={() => setRoute("agent_platform")}>
+              <strong>Official — WhatsApp Agent Platform</strong>
+              <span style={styles.routeDesc}>
+                Create the Medot agent in WhatsApp's Agent Manager and paste its
+                API key. No extra software. Official, no ban risk.
+              </span>
+            </button>
+            <button style={styles.routeCard} onClick={() => setRoute("baileys")}>
+              <strong>QR scan — Baileys bridge (unofficial)</strong>
+              <span style={styles.routeDesc}>
+                Pair like WhatsApp Web. Needs Node.js 18+. Supports groups and a
+                dedicated bot number — small ban risk, use a secondary number.
+              </span>
+            </button>
+            {waStatus && (
+              <p style={styles.muted}>
+                Agent Platform: {routeBadge(waStatus.agent_platform)} · Baileys:{" "}
+                {routeBadge(waStatus.baileys)}
+              </p>
+            )}
+          </>
+        )}
+
+        {state.status === "connect_whatsapp" && route === "agent_platform" && (
           <>
             <p style={styles.lede}>
-              Last step — connect Medot to your WhatsApp.
+              Official route — connect your Medot agent.
             </p>
             <ol style={styles.steps}>
               <li>
@@ -175,15 +276,59 @@ export default function App() {
               placeholder="Paste your WhatsApp agent API key"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && apiKey && connectWhatsapp()}
+              onKeyDown={(e) => e.key === "Enter" && apiKey && connectAgentPlatform()}
             />
             {error && <p role="alert" style={styles.error}>{error}</p>}
             <button
               style={styles.primaryBtn}
-              onClick={connectWhatsapp}
+              onClick={connectAgentPlatform}
               disabled={!apiKey}
             >
-              Connect WhatsApp
+              Connect Agent Platform
+            </button>
+            <button style={styles.secondaryBtn} onClick={() => setRoute("choice")}>
+              ← Other routes
+            </button>
+          </>
+        )}
+
+        {state.status === "connect_whatsapp" && route === "baileys" && (
+          <>
+            <p style={styles.lede}>QR route — pair like WhatsApp Web.</p>
+            <div style={styles.modeRow}>
+              <label style={styles.radio}>
+                <input
+                  type="radio"
+                  checked={baileysMode === "self"}
+                  onChange={() => setBaileysMode("self")}
+                />
+                My own number (message yourself)
+              </label>
+              <label style={styles.radio}>
+                <input
+                  type="radio"
+                  checked={baileysMode === "bot"}
+                  onChange={() => setBaileysMode("bot")}
+                />
+                Dedicated bot number
+              </label>
+            </div>
+            <ol style={styles.steps}>
+              <li>Open <strong>WhatsApp → Settings → Linked Devices</strong>.</li>
+              <li>Tap <strong>Link a Device</strong> and scan the QR.</li>
+            </ol>
+            {qr && (
+              <p style={{ textAlign: "center" }}>
+                <img src={qr} alt="WhatsApp pairing QR code" style={styles.qr} />
+              </p>
+            )}
+            {baileysPaired && <p style={styles.ok}>✅ Paired.</p>}
+            {error && <p role="alert" style={styles.error}>{error}</p>}
+            <button style={styles.primaryBtn} onClick={connectBaileys}>
+              {qr ? "Regenerate QR" : "Show QR"}
+            </button>
+            <button style={styles.secondaryBtn} onClick={() => setRoute("choice")}>
+              ← Other routes
             </button>
           </>
         )}
@@ -196,6 +341,27 @@ export default function App() {
               ✅ All set. Open <strong>WhatsApp</strong> and start chatting with
               your Medot agent — Me. is listening there.
             </p>
+            <div style={styles.statusRow}>
+              <span>Agent Platform {routeBadge(waStatus?.agent_platform)}</span>
+              <button
+                style={styles.linkBtn}
+                onClick={() => disconnect("agent-platform")}
+              >
+                disconnect
+              </button>
+            </div>
+            <div style={styles.statusRow}>
+              <span>Baileys {routeBadge(waStatus?.baileys)}</span>
+              <button style={styles.linkBtn} onClick={() => disconnect("baileys")}>
+                disconnect
+              </button>
+            </div>
+            <p style={styles.muted}>
+              Connect the other route any time to run both simultaneously.
+            </p>
+            <button style={styles.secondaryBtn} onClick={() => setRoute("choice")}>
+              + Connect another route
+            </button>
             <p style={styles.muted}>
               Me. learns about you as you chat, and your specialist identities
               (Health, Education, …) will appear here as they develop.
@@ -240,7 +406,43 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 15,
     cursor: "pointer",
     marginTop: 8,
+    marginRight: 8,
   },
+  secondaryBtn: {
+    background: "transparent",
+    color: "#1c1917",
+    border: "1px solid #d6d3d1",
+    borderRadius: 8,
+    padding: "10px 18px",
+    fontSize: 14,
+    cursor: "pointer",
+    marginTop: 8,
+  },
+  linkBtn: {
+    background: "transparent",
+    color: "#b91c1c",
+    border: "none",
+    fontSize: 12,
+    cursor: "pointer",
+    textDecoration: "underline",
+  },
+  routeCard: {
+    display: "block",
+    width: "100%",
+    textAlign: "left",
+    background: "#fafaf9",
+    border: "1px solid #d6d3d1",
+    borderRadius: 10,
+    padding: "14px 16px",
+    margin: "10px 0",
+    cursor: "pointer",
+    font: "inherit",
+  },
+  routeDesc: { display: "block", marginTop: 4, color: "#78716c", fontSize: 13 },
+  modeRow: { display: "flex", gap: 16, margin: "8px 0" },
+  radio: { fontSize: 14, display: "flex", alignItems: "center", gap: 6 },
+  qr: { width: 240, height: 240, borderRadius: 8 },
+  ok: { color: "#15803d", fontSize: 14 },
   input: {
     width: "100%",
     boxSizing: "border-box",
@@ -250,6 +452,17 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     marginBottom: 8,
   },
+  statusRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottom: "1px solid #f0efee",
+    padding: "8px 0",
+    fontSize: 14,
+  },
+  badgeOn: { color: "#15803d", fontWeight: 600, marginLeft: 4 },
+  badgeOff: { color: "#a8a29e", marginLeft: 4 },
+  badgeWarn: { color: "#b45309", marginLeft: 4 },
   error: { color: "#b91c1c", fontSize: 13 },
   muted: { color: "#78716c", fontSize: 13 },
 };

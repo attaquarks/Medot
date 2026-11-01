@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import __version__
 from ..config import get_settings
@@ -18,8 +19,28 @@ from ..localstore import keystore as keystore_mod
 from ..localstore import paths
 from ..supabase import auth as supabase_auth
 from ..supabase import bootstrap as supabase_bootstrap
+from ..whatsapp import manager as wa_manager
+from ..whatsapp.baileys import BridgeError, BridgeSettings
 
-app = FastAPI(title="Medot Runtime", version=__version__)
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Resume WhatsApp transports for the last signed-in user, if any."""
+    restored = supabase_auth.load_session()
+    if restored:
+        try:
+            user_id = restored["user"]["id"]
+            from ..supabase.client import client_for_session
+
+            client = client_for_session(restored["access_token"])
+            await wa_manager.get_manager().resume(client, user_id)
+        except Exception:  # noqa: BLE001, S110 - startup resume is best effort
+            pass
+    yield
+    await wa_manager.shutdown_manager()
+
+
+app = FastAPI(title="Medot Runtime", version=__version__, lifespan=lifespan)
 
 _launch_token: str | None = None
 
@@ -111,10 +132,8 @@ async def signout(_: None = Depends(require_token)) -> dict:
 
 
 # --------------------------- WhatsApp connection -----------------------------
-
-class ConnectBody(BaseModel):
-    api_key: str
-
+# Two routes (docs/medot/03, decision 2026-11-02): the official Agent Platform
+# and the unofficial Baileys bridge. Either, or both, can be connected.
 
 def _user_client() -> tuple[str, object]:
     """(user_id, Supabase client running as the user) or 401."""
@@ -127,34 +146,104 @@ def _user_client() -> tuple[str, object]:
     return user_id, client_for_session(restored["access_token"])
 
 
-@app.post("/whatsapp/connect")
-async def whatsapp_connect(body: ConnectBody, _: None = Depends(require_token)) -> dict:
-    """Store the pasted Agent Platform API key (keystore) and record the link."""
-    from ..whatsapp import connection as wa
+class AgentPlatformConnectBody(BaseModel):
+    api_key: str
 
+
+@app.post("/whatsapp/agent-platform/connect")
+async def whatsapp_agent_platform_connect(body: AgentPlatformConnectBody, _: None = Depends(require_token)) -> dict:
+    """Store the pasted Agent Platform API key (keystore) and start polling."""
     user_id, client = await asyncio.to_thread(_user_client)
     try:
-        result = await asyncio.to_thread(wa.connect, client, user_id, body.api_key)
+        return await wa_manager.get_manager().connect_agent_platform(client, user_id, body.api_key)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return result.as_dict()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/whatsapp/agent-platform/disconnect")
+async def whatsapp_agent_platform_disconnect(_: None = Depends(require_token)) -> dict:
+    user_id, client = await asyncio.to_thread(_user_client)
+    await wa_manager.get_manager().disconnect_agent_platform(client, user_id)
+    return {"ok": True}
+
+
+class BaileysConnectBody(BaseModel):
+    mode: str = "self"
+    allowed_users: list[str] = Field(default_factory=list)
+    allow_all: bool = False
+    group_policy: str = "pairing"
+    group_allow: list[str] = Field(default_factory=list)
+    require_mention: bool = False
+
+
+@app.post("/whatsapp/baileys/connect")
+async def whatsapp_baileys_connect(body: BaileysConnectBody, _: None = Depends(require_token)) -> dict:
+    """Record the Baileys link + policy and spawn the bridge.
+
+    Pairing is asynchronous: poll `GET /whatsapp/baileys/qr` until `paired`.
+    """
+    user_id, client = await asyncio.to_thread(_user_client)
+    settings = BridgeSettings(
+        mode=body.mode,
+        allowed_users=body.allowed_users,
+        allow_all=body.allow_all,
+        group_policy=body.group_policy,
+        group_allow=body.group_allow,
+        require_mention=body.require_mention,
+    )
+    try:
+        return await wa_manager.get_manager().connect_baileys(client, user_id, settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except BridgeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/whatsapp/baileys/qr")
+async def whatsapp_baileys_qr(_: None = Depends(require_token)) -> dict:
+    try:
+        return await wa_manager.get_manager().baileys_qr()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BridgeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/whatsapp/baileys/disconnect")
+async def whatsapp_baileys_disconnect(_: None = Depends(require_token)) -> dict:
+    """Stop the bridge; the paired session is kept for next time."""
+    user_id, client = await asyncio.to_thread(_user_client)
+    await wa_manager.get_manager().disconnect_baileys(client, user_id)
+    return {"ok": True}
+
+
+@app.post("/whatsapp/baileys/logout")
+async def whatsapp_baileys_logout(_: None = Depends(require_token)) -> dict:
+    """Unpair entirely: the WhatsApp session is wiped, a new QR is required."""
+    user_id, client = await asyncio.to_thread(_user_client)
+    await wa_manager.get_manager().baileys_logout(client, user_id)
+    return {"ok": True}
 
 
 @app.get("/whatsapp/status")
 async def whatsapp_status(_: None = Depends(require_token)) -> dict:
-    from ..whatsapp import connection as wa
-
-    user_id, client = await asyncio.to_thread(_user_client)
-    return (await asyncio.to_thread(wa.status, client, user_id)).as_dict()
+    return wa_manager.get_manager().status()
 
 
-@app.post("/whatsapp/disconnect")
-async def whatsapp_disconnect(_: None = Depends(require_token)) -> dict:
-    from ..whatsapp import connection as wa
+class SendBody(BaseModel):
+    text: str
+    transport: str | None = None  # agent_platform | baileys (default: first connected)
+    to: str | None = None  # default: last inbound peer (the creator / self-chat)
 
-    user_id, client = await asyncio.to_thread(_user_client)
-    await asyncio.to_thread(wa.disconnect, client, user_id)
-    return {"ok": True}
+
+@app.post("/whatsapp/send")
+async def whatsapp_send(body: SendBody, _: None = Depends(require_token)) -> dict:
+    try:
+        return await wa_manager.get_manager().send(body.text, transport_name=body.transport, to=body.to)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/paths")
