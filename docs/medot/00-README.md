@@ -5,10 +5,10 @@ repository from **AIA** (a two-agent WhatsApp assistant with hardcoded
 `business` and `health` agents) into **Medot** — one personal AI companion
 ("Me.") that develops persistent, user-visible specialist identities.
 
-These documents do **not** replace the historical `docs/01…09` AIA
-specifications; they supersede them. The old docs are retained as a record of
-the existing implementation and are explicitly marked as non-authoritative for
-the new direction.
+These documents do **not** replace the historical AIA specifications; they
+supersede them. The old docs are retained under [`docs/archive/aia/`](../archive/aia/)
+as a record of the original implementation and are explicitly marked as
+non-authoritative for the new direction.
 
 ## Document map
 

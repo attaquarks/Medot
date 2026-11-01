@@ -5,9 +5,9 @@
 secrets/
 data/
 
-# WhatsApp Baileys auth sessions (contain login credentials)
-services/whatsapp-gateway/auth_info*/
+# WhatsApp Baileys auth sessions (contain full account credentials)
 auth_info*/
+bridges/baileys/session/
 
 # Python
 __pycache__/
@@ -23,7 +23,6 @@ build/
 
 # Node
 node_modules/
-services/whatsapp-gateway/dist/
 npm-debug.log*
 
 # OS / editor
@@ -31,15 +30,6 @@ npm-debug.log*
 .idea/
 .vscode/
 *.swp
-
-# Local volumes
-pgdata/
-ollama_models/
-redisdata/
-
-# graphify machine-local interpreter state
-graphify-out/.graphify_python
-graphify-out/.graphify_root
 
 # Medot runtime
 runtime/venv/
@@ -61,5 +51,8 @@ supabase/.temp/
 # Local Supabase secrets (Google OAuth credentials etc.)
 supabase/.env.local
 
-# Bundled publishable config (CI-generated, never committed)
+# Bundled publishable config (CI-generated / machine-local, never committed)
 config.toml
+
+# Agent workspace artifacts
+.video_agent/
