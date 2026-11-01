@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 /**
- * Medot Desktop — Milestone 1 walking skeleton.
+ * Medot Desktop — onboarding console.
  *
- * Talks to the local runtime (127.0.0.1, launch-token auth). The launch token
- * arrives from the Tauri shell (read at startup from the sidecar's stdout).
+ * Flow: sign in with Google -> connect WhatsApp (paste the agent API key
+ * from WhatsApp's Agent Manager) -> chat with Me. on WhatsApp.
+ * Talks to the local runtime (127.0.0.1, launch-token auth).
  */
 
 const RUNTIME_URL = "http://127.0.0.1:8756";
@@ -12,20 +13,6 @@ const RUNTIME_URL = "http://127.0.0.1:8756";
 let launchToken = "";
 export function setLaunchToken(token: string) {
   launchToken = token;
-}
-
-/** Complete sign-in when the shell forwards a medot://auth/callback URL. */
-export async function completeDeepLink(url: string) {
-  try {
-    await api("/auth/callback", {
-      method: "POST",
-      body: JSON.stringify({ callback_url: url }),
-    });
-    // Deliver a state refresh to any mounted listener.
-    window.dispatchEvent(new CustomEvent("medot:session-changed"));
-  } catch (err) {
-    console.error("deep-link sign-in failed", err);
-  }
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -44,37 +31,49 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Complete sign-in when the shell forwards a medot://auth/callback URL. */
+export async function completeDeepLink(url: string) {
+  try {
+    await api("/auth/callback", {
+      method: "POST",
+      body: JSON.stringify({ callback_url: url }),
+    });
+    window.dispatchEvent(new CustomEvent("medot:session-changed"));
+  } catch (err) {
+    console.error("deep-link sign-in failed", err);
+  }
+}
+
 type SessionState =
   | { status: "connecting" }
   | { status: "runtime_down" }
   | { status: "signed_out" }
   | { status: "signing_in" }
-  | { status: "signed_in"; user_id: string; complete: boolean; missing: string[] };
+  | { status: "connect_whatsapp" }
+  | { status: "connecting_whatsapp" }
+  | { status: "ready"; user_id: string; connected_at: string | null };
 
 export default function App() {
   const [state, setState] = useState<SessionState>({ status: "connecting" });
   const [error, setError] = useState("");
+  const [apiKey, setApiKey] = useState("");
 
   const refresh = useCallback(async () => {
     try {
-      const session = await api<{
-        authenticated: boolean;
-        user_id?: string;
-      }>("/session");
+      const session = await api<{ authenticated: boolean; user_id?: string }>("/session");
       if (!session.authenticated) {
         setState({ status: "signed_out" });
         return;
       }
-      const boot = await api<{
-        complete: boolean;
-        missing: string[];
-        me_identity_id: string;
-      }>("/bootstrap");
+      const wa = await api<{ connected: boolean; connected_at: string | null }>("/whatsapp/status");
+      if (!wa.connected) {
+        setState({ status: "connect_whatsapp" });
+        return;
+      }
       setState({
-        status: "signed_in",
+        status: "ready",
         user_id: session.user_id!,
-        complete: boot.complete,
-        missing: boot.missing,
+        connected_at: wa.connected_at,
       });
     } catch (err) {
       setError(String(err));
@@ -92,11 +91,9 @@ export default function App() {
     setState({ status: "signing_in" });
     try {
       await api("/auth/start", { method: "POST" });
-      // The runtime completes sign-in when the deep-link callback arrives;
-      // the shell forwards it. Poll for session restoration.
       for (let i = 0; i < 60; i++) {
         await new Promise((r) => setTimeout(r, 2000));
-        const session = await api<{ authenticated: boolean; user_id?: string }>("/session");
+        const session = await api<{ authenticated: boolean }>("/session");
         if (session.authenticated) break;
       }
       await refresh();
@@ -106,51 +103,102 @@ export default function App() {
     }
   }, [refresh]);
 
+  const connectWhatsapp = useCallback(async () => {
+    setError("");
+    setState({ status: "connecting_whatsapp" });
+    try {
+      await api("/whatsapp/connect", {
+        method: "POST",
+        body: JSON.stringify({ api_key: apiKey }),
+      });
+      setApiKey("");
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+      setState({ status: "connect_whatsapp" });
+    }
+  }, [apiKey, refresh]);
+
   return (
     <main style={styles.shell}>
       <header style={styles.header}>
         <h1 style={styles.wordmark}>
           Medot<span style={styles.dot}>.</span>
         </h1>
-        <p style={styles.tagline}>Your personal companion</p>
+        <p style={styles.tagline}>Your personal companion — on WhatsApp</p>
       </header>
 
       <section style={styles.card}>
         {state.status === "connecting" && <p>Starting…</p>}
+
         {state.status === "runtime_down" && (
-          <p role="alert">
-            The Medot runtime is not reachable. {error}
-          </p>
+          <p role="alert">The Medot runtime is not reachable. {error}</p>
         )}
+
         {state.status === "signed_out" && (
           <>
             <p style={styles.lede}>
-              Sign in with Google to create your personal space. Medot keeps
-              your data in your own account, protected end to end.
+              Two quick steps and you're talking with Me. on WhatsApp:
             </p>
+            <ol style={styles.steps}>
+              <li>Sign in with Google — creates your personal space.</li>
+              <li>Connect WhatsApp — paste your Medot agent key.</li>
+            </ol>
             <button style={styles.primaryBtn} onClick={signIn}>
               Sign in with Google
             </button>
           </>
         )}
+
         {state.status === "signing_in" && (
           <p>Finish signing in with Google in your browser…</p>
         )}
-        {state.status === "signed_in" && (
+
+        {state.status === "connect_whatsapp" && (
           <>
             <p style={styles.lede}>
-              Signed in. Me. is ready
-              {state.complete
-                ? " — your account is set up."
-                : ` — account setup incomplete: ${state.missing.join(", ")}`}
+              Last step — connect Medot to your WhatsApp.
             </p>
-            <dl style={styles.facts}>
-              <dt>User</dt>
-              <dd style={styles.mono}>{state.user_id}</dd>
-            </dl>
+            <ol style={styles.steps}>
+              <li>
+                Open <strong>WhatsApp → Settings → Agents</strong> and create
+                the <strong>Medot</strong> agent.
+              </li>
+              <li>
+                WhatsApp shows you an <strong>API key</strong> — copy it.
+              </li>
+              <li>Paste it below. It stays on this computer, encrypted.</li>
+            </ol>
+            <input
+              style={styles.input}
+              type="password"
+              placeholder="Paste your WhatsApp agent API key"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && apiKey && connectWhatsapp()}
+            />
+            {error && <p role="alert" style={styles.error}>{error}</p>}
+            <button
+              style={styles.primaryBtn}
+              onClick={connectWhatsapp}
+              disabled={!apiKey}
+            >
+              Connect WhatsApp
+            </button>
+          </>
+        )}
+
+        {state.status === "connecting_whatsapp" && <p>Connecting…</p>}
+
+        {state.status === "ready" && (
+          <>
+            <p style={styles.lede}>
+              ✅ All set. Open <strong>WhatsApp</strong> and start chatting with
+              your Medot agent — Me. is listening there.
+            </p>
             <p style={styles.muted}>
-              Next milestones add identities, WhatsApp connection and knowledge
-              management here.
+              Me. learns about you as you chat, and your specialist identities
+              (Health, Education, …) will appear here as they develop.
             </p>
           </>
         )}
@@ -182,6 +230,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 24,
   },
   lede: { marginTop: 0, lineHeight: 1.5 },
+  steps: { lineHeight: 1.7, paddingLeft: 20 },
   primaryBtn: {
     background: "#1c1917",
     color: "#ffffff",
@@ -190,8 +239,17 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "10px 18px",
     fontSize: 15,
     cursor: "pointer",
+    marginTop: 8,
   },
-  facts: { display: "flex", gap: 8, alignItems: "baseline" },
-  mono: { fontFamily: "ui-monospace, monospace", fontSize: 12, wordBreak: "break-all" },
+  input: {
+    width: "100%",
+    boxSizing: "border-box",
+    border: "1px solid #d6d3d1",
+    borderRadius: 8,
+    padding: "10px 12px",
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  error: { color: "#b91c1c", fontSize: 13 },
   muted: { color: "#78716c", fontSize: 13 },
 };

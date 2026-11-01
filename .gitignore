@@ -60,3 +60,6 @@ supabase/.temp/
 
 # Local Supabase secrets (Google OAuth credentials etc.)
 supabase/.env.local
+
+# Bundled publishable config (CI-generated, never committed)
+config.toml

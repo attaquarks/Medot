@@ -23,6 +23,8 @@ the new direction.
 | [07-desktop-and-local-platform.md](07-desktop-and-local-platform.md) | Tauri 2 shell, navigation, identity detail pages, Python runtime lifecycle, local filesystem, secret storage |
 | [08-providers-connectors-browser.md](08-providers-connectors-browser.md) | Model profiles, provider adapters, connector registry, browser capability |
 | [09-migration-roadmap.md](09-migration-roadmap.md) | Existing-code audit, migration strategy, target repo layout, milestones 1–8, first milestone acceptance criteria |
+| [12-ac1-verification.md](12-ac1-verification.md) | AC1 end-to-end verification procedure |
+| [13-hosted-development.md](13-hosted-development.md) | No-local-builds policy, hosted services map, CI installer flow |
 | [10-open-decisions.md](10-open-decisions.md) | Technical risks and decisions that remain open, with owners and trigger points |
 | [11-framework-integration.md](11-framework-integration.md) | LangChain/LangGraph/LiteLLM/MCP integration contract, approval flow, checkpointer rules, PoC plan |
 

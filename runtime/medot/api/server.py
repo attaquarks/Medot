@@ -110,6 +110,53 @@ async def signout(_: None = Depends(require_token)) -> dict:
     return {"ok": True}
 
 
+# --------------------------- WhatsApp connection -----------------------------
+
+class ConnectBody(BaseModel):
+    api_key: str
+
+
+def _user_client() -> tuple[str, object]:
+    """(user_id, Supabase client running as the user) or 401."""
+    restored = supabase_auth.load_session()
+    if not restored:
+        raise HTTPException(status_code=401, detail="not signed in")
+    user_id = restored["user"]["id"]
+    from ..supabase.client import client_for_session
+
+    return user_id, client_for_session(restored["access_token"])
+
+
+@app.post("/whatsapp/connect")
+async def whatsapp_connect(body: ConnectBody, _: None = Depends(require_token)) -> dict:
+    """Store the pasted Agent Platform API key (keystore) and record the link."""
+    from ..whatsapp import connection as wa
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    try:
+        result = await asyncio.to_thread(wa.connect, client, user_id, body.api_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result.as_dict()
+
+
+@app.get("/whatsapp/status")
+async def whatsapp_status(_: None = Depends(require_token)) -> dict:
+    from ..whatsapp import connection as wa
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    return (await asyncio.to_thread(wa.status, client, user_id)).as_dict()
+
+
+@app.post("/whatsapp/disconnect")
+async def whatsapp_disconnect(_: None = Depends(require_token)) -> dict:
+    from ..whatsapp import connection as wa
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    await asyncio.to_thread(wa.disconnect, client, user_id)
+    return {"ok": True}
+
+
 @app.get("/paths")
 async def layout() -> dict:
     dirs = paths.ensure_layout()

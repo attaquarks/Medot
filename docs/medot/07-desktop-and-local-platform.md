@@ -73,9 +73,10 @@ embeddings/group_id". Facts render with their dates ("Weight 74.2 kg — recorde
 
 1. Sign in with Google (system browser; deep-link callback).
 2. Initialize account (automatic: profile, Me., global domain).
-3. Connect WhatsApp: the user links the Medot agent in WhatsApp's Agent
-   Manager and pastes the API key (goes to the OS keystore); the relay links
-   the account to this desktop.
+3. Connect WhatsApp — the FIRST thing the user does after sign-in: they link
+   the Medot agent in WhatsApp (Settings → Agents), copy the API key, paste
+   it in Medot. Key -> OS keystore; chats with Me. happen on WhatsApp,
+   served by the agent runtime on the user's machine (cloud later).
 4. Pick AI provider + model; enter key (goes to OS keystore).
 5. Done → Overview.
 

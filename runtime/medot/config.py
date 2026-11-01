@@ -2,15 +2,57 @@
 
 Only publishable credentials ever appear here (Supabase project URL +
 anon/publishable key). Privileged keys are never configured — the service-role
-key must not exist in this process (AC4). Values come from environment or the
-non-secret config file written by the desktop installer.
+key must not exist in this process (AC4).
+
+Resolution order for the Supabase values:
+  1. environment variables (dev),
+  2. a `config.toml` bundled beside the code (`--add-data` at PyInstaller
+     build time — CI writes it from repository secrets; nothing is baked into
+     source).
 """
 from __future__ import annotations
 
+import os
+import sys
+import tomllib
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _apply_bundled_config() -> None:
+    """Load `config.toml` (publishable values only) into the environment.
+
+    Only sets variables the user did not already provide. When frozen, the
+    file unpacks to sys._MEIPASS; in dev it sits next to the source root.
+    """
+    candidates = []
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidates.append(Path(meipass) / "config.toml")
+        candidates.append(Path(sys.executable).parent / "config.toml")
+    else:
+        candidates.append(Path(__file__).resolve().parent.parent / "config.toml")
+
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        mapping = {
+            "supabase_url": "MEDOT_SUPABASE_URL",
+            "publishable_key": "MEDOT_SUPABASE_PUBLISHABLE_KEY",
+        }
+        for key, env_var in mapping.items():
+            value = data.get("supabase", {}).get(key)
+            if value and not os.environ.get(env_var):
+                os.environ[env_var] = str(value)
+        return
 
 
 class Settings(BaseSettings):
@@ -35,4 +77,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    _apply_bundled_config()
     return Settings()
