@@ -57,3 +57,6 @@ desktop/src-tauri/binaries/
 # Local Supabase dev stack artifacts
 supabase/.branches/
 supabase/.temp/
+
+# Local Supabase secrets (Google OAuth credentials etc.)
+supabase/.env.local

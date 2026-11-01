@@ -213,12 +213,16 @@ The full design is in `04-knowledge-graph-architecture.md`. Summary:
 
 ## 9. Messaging transport (summary)
 
-Full comparison in `03-whatsapp-connection-strategy.md`. Requirements fixed
-here: **one** conversational identity, replaceable adapter interface,
-dedupe/order/retry, secure session persistence, reconnect on restart, and
-proactive outbound support (daily briefs) that does not depend on a recent
-inbound message. The existing Node Baileys sidecar and the Cloud API adapter
-from AIA are the two candidate implementations behind one interface.
+Full strategy in `03-whatsapp-connection-strategy.md`. **Decided
+(2026-11-01): Me. connects exclusively through the official WhatsApp Agent
+Platform** — the user links the agent via WhatsApp's Agent Manager and
+supplies the API key, stored in the OS keystore. Two prerequisites gate
+implementation: provider-side developer access (unverified — no public
+onboarding documented) and a Medot relay service (OD-13, first server
+component). Requirements fixed regardless: **one** conversational identity,
+a replaceable adapter interface, dedupe/order/retry, secure credential
+persistence, reconnect on restart, and proactive outbound support (daily
+briefs).
 
 ## 10. Deployment shape
 

@@ -25,8 +25,8 @@ email poller, bus replay.
 | **BaseAgent loop** | `src/aia/agents/base.py` | **Refactor into generic runtime** | Tool-hop loop is solid; hardcode-free after removing agent-specific prompt wiring. Tool-call parsing (fenced ```tool blocks + native calls) is a genuine asset for small local models. |
 | **ToolRegistry / ToolContext** | `src/aia/agents/tools.py` | **Keep as-is** | Clean abstraction; add per-identity grant filtering + approval hook. |
 | **Business/Health agents** | `src/aia/agents/business/*`, `health/*` | **Archive as seed data** | Their prompts become seed *instruction documents* and their tools become the first *tool keys*; the Python packages themselves are deleted from the runtime path. Health's nutrition math (`nutrition.py`, fully tested) migrates into a domain-record helper or a seed tool library. |
-| **WhatsApp sidecar (Baileys)** | `services/whatsapp-gateway/` | **Keep as transport option** | Working QR transport; needs dedupe/ordering hardening and `fromMe` policy review (see `03-whatsapp-connection-strategy.md`). |
-| **WhatsApp Cloud API adapter** | `src/aia/integrations/whatsapp/cloud_api.py` | **Keep as transport option** | Already implements the official path incl. verification handshake. |
+| **WhatsApp sidecar (Baileys)** | `services/whatsapp-gateway/` | **Archive** | Superseded: Me. connects via the WhatsApp Agent Platform exclusively (decision 2026-11-01, doc 03). |
+| **WhatsApp Cloud API adapter** | `src/aia/integrations/whatsapp/cloud_api.py` | **Archive** | Superseded by the same decision. |
 | **Gateway webhooks + router** | `src/aia/gateway/` | **Refactor** | Webhook plumbing is reusable; the keyword router (`route()`) is replaced by active-identity state + slash commands. Allowlist logic is kept. |
 | **Event bus (Redis Streams)** | `src/aia/events/bus.py` | **Replace** | Redis as a *required user install* violates the Medot deployment principle. Single-process runtime + SQLite spool for offline. The replay-on-restart lesson (stable consumer, ack discipline) carries over conceptually. |
 | **OAuth manager** | `src/aia/integrations/oauth.py` | **Refactor** | Token refresh + encrypted storage logic is good; storage target changes from Postgres rows to OS keystore + Supabase `connector_accounts` metadata. |
@@ -77,7 +77,7 @@ medot/
 │  │  ├─ localstore/            # workspace files, spool, logs, keystore wrapper
 │  │  └─ scheduling/            # proactive scheduler
 │  └─ pyproject.toml
-├─ whatsapp-sidecar/            # Node/Baileys transport (moved from services/)
+├─ relay/                       # Medot relay service (Agent Platform webhooks -> desktop fan-out)
 ├─ website/                     # minimal marketing + download site
 ├─ supabase/                    # migrations, seed (domain_schemas), RLS tests
 ├─ docs/
@@ -95,7 +95,7 @@ Phase the repo in place; keep `main` working:
 3. **Milestone 2 — Identity registry**: `identities/` with CRUD + versioned instructions + model profiles; seed Me. as the first coordinator identity.
 4. **Milestone 3 — Knowledge system**: `KnowledgeService` over the new tables; ingestion from live conversations; record store + seed schemas.
 5. **Milestone 4 — Generic runtime**: refactor BaseAgent → registry-driven engine; Me. coordinator + activation router; background invocation; approvals. *AIA's two agents become seed identities here and the old packages are archived.*
-6. **Milestone 5 — WhatsApp**: transport interface; Baileys sidecar hardening (dedupe/order/`fromMe` policy/reconnect); Cloud API option verified. Old gateway retired.
+6. **Milestone 5 — WhatsApp**: provider-access spike (Agent Manager/API surface), relay service design + authorization (OD-13), Transport interface with Agent Platform implementation, agent-link onboarding (API key -> keystore), dedupe/ordering/reconnect. Old AIA gateway archived.
 7. **Milestone 6 — Desktop console**: full UI over the local API.
 8. **Milestone 7 — Connectors**: migrate email/calendar/tasks providers under the registry; browser capability.
 9. **Milestone 8 — Packaging**: Windows installer, auto-update, recovery tests; macOS/Linux after.

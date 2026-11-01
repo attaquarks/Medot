@@ -107,6 +107,11 @@ pub fn run() {
         .setup(|app| {
             spawn_runtime(app.handle());
 
+            // Dev builds register the medot:// scheme at runtime; installed
+            // builds get it from the installer (tauri.conf.json schemes).
+            #[cfg(debug_assertions)]
+            app.deep_link().register_all();
+
             // Deep links received by the *running* instance (warm start).
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {

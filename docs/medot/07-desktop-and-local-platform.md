@@ -14,9 +14,9 @@ official docs, Oct 2026 (Tauri 2.12.x stable line).
 PyInstaller-onedir Python runtime.)
 
 - The desktop is a **management console** — never a chat surface.
-- The Python runtime (`medot-runtime`) and, when the Baileys transport is
-  selected, the WhatsApp sidecar run as child processes supervised by the
-  Tauri shell.
+- The Python runtime (`medot-runtime`) runs as a child process supervised by
+  the Tauri shell. (No WhatsApp sidecar: Me. connects through the WhatsApp
+  Agent Platform via the Medot relay — see `03-whatsapp-connection-strategy.md`.
 - Communication: runtime serves a **loopback-only HTTP API** (`127.0.0.1`,
   authenticated with a per-launch token shared over stdout/pipe) consumed by
   the React UI via Tauri commands or direct fetch. No ports exposed beyond
@@ -73,7 +73,9 @@ embeddings/group_id". Facts render with their dates ("Weight 74.2 kg — recorde
 
 1. Sign in with Google (system browser; deep-link callback).
 2. Initialize account (automatic: profile, Me., global domain).
-3. Connect WhatsApp (per transport: QR scan render or Cloud API setup guide).
+3. Connect WhatsApp: the user links the Medot agent in WhatsApp's Agent
+   Manager and pastes the API key (goes to the OS keystore); the relay links
+   the account to this desktop.
 4. Pick AI provider + model; enter key (goes to OS keystore).
 5. Done → Overview.
 
