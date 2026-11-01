@@ -80,9 +80,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Placeholder sidecar (tauri resource check; the release job builds the real one)
         shell: pwsh
+        working-directory: .
         run: |
-          New-Item -ItemType Directory -Force desktop/src-tauri/binaries | Out-Null
-          Set-Content -Path desktop/src-tauri/binaries/medot-runtime-x86_64-pc-windows-msvc.exe -Value "" -NoNewline
+          New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
+          Set-Content -Path src-tauri/binaries/medot-runtime-x86_64-pc-windows-msvc.exe -Value "" -NoNewline
       - name: Rust check
         working-directory: desktop/src-tauri
         run: cargo check
