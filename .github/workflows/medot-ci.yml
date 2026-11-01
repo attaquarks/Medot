@@ -3,9 +3,9 @@ name: medot-ci
 on:
   push:
     branches: [main]
-    paths: ["runtime/**", "supabase/**", "desktop/**", ".github/workflows/medot-ci.yml"]
+    paths: ["runtime/**", "supabase/**", "desktop/**", "bridges/**", ".github/workflows/medot-ci.yml"]
   pull_request:
-    paths: ["runtime/**", "supabase/**", "desktop/**", ".github/workflows/medot-ci.yml"]
+    paths: ["runtime/**", "supabase/**", "desktop/**", "bridges/**", ".github/workflows/medot-ci.yml"]
 
 jobs:
   runtime:
@@ -47,6 +47,20 @@ jobs:
           echo "MEDOT_TEST_SUPABASE_SERVICE_KEY=$(echo "$status" | grep '^SERVICE_ROLE_KEY=' | cut -d= -f2-)" >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@v5
       - name: Integration tests (RLS isolation, bootstrap, records)
+        working-directory: runtime
+        run: uv run --extra dev pytest tests/ -q
+
+  supabase-hosted:
+    name: Integration tests — hosted Supabase
+    runs-on: ubuntu-latest
+    env:
+      MEDOT_TEST_SUPABASE_URL: ${{ secrets.MEDOT_TEST_SUPABASE_URL }}
+      MEDOT_TEST_SUPABASE_KEY: ${{ secrets.MEDOT_TEST_SUPABASE_KEY }}
+      MEDOT_TEST_SUPABASE_SERVICE_KEY: ${{ secrets.MEDOT_TEST_SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Integration tests (RLS isolation against the hosted project)
         working-directory: runtime
         run: uv run --extra dev pytest tests/ -q
 
