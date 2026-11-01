@@ -56,3 +56,6 @@ config.toml
 
 # Agent workspace artifacts
 .video_agent/
+
+# Impeccable working artifacts (decision mocks, build state, reviews)
+.impeccable/
