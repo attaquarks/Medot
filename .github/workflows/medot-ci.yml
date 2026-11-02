@@ -44,9 +44,10 @@ jobs:
           status=$(supabase status -o env)
           echo "--- supabase status ---"
           echo "$status"
-          url=$(echo "$status" | grep -i '^API_URL=' | cut -d= -f2-)
-          anon=$(echo "$status" | grep -i '^ANON_KEY=' | cut -d= -f2-)
-          service=$(echo "$status" | grep -i '^SERVICE_ROLE_KEY=' | cut -d= -f2-)
+          # the env output quotes values — strip them or every probe fails
+          url=$(echo "$status" | grep -i '^API_URL=' | cut -d= -f2- | tr -d '"')
+          anon=$(echo "$status" | grep -i '^ANON_KEY=' | cut -d= -f2- | tr -d '"')
+          service=$(echo "$status" | grep -i '^SERVICE_ROLE_KEY=' | cut -d= -f2- | tr -d '"')
           if [ -z "$url" ] || [ -z "$service" ]; then
             echo "::error::could not read API_URL/SERVICE_ROLE_KEY from supabase status — the stack is not up"
             exit 1
