@@ -2,7 +2,8 @@
  *  NOT part of the shipped bundle (vite build only bundles index.html). */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { Overview, Identities, Knowledge, Connectors, Providers, Activity, Settings } from "./screens-console";
+import { Overview, Identities, Knowledge, Connectors, Activity, Settings } from "./screens-console";
+import { Providers } from "./screens-providers";
 import { SignIn, ConnectWhatsApp } from "./screens-onboarding";
 import type { WaStatus } from "./lib/api";
 import "./styles/console.css";

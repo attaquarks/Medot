@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type Session, type WaStatus } from "./lib/api";
 import { SignIn, ConnectWhatsApp } from "./screens-onboarding";
 import {
-  Overview, Identities, Knowledge, Connectors, Providers, Activity, Settings,
+  Overview, Identities, Knowledge, Connectors, Activity, Settings,
 } from "./screens-console";
+import { Providers } from "./screens-providers";
 import "./styles/console.css";
 
 type Phase = "connecting" | "runtime_down" | "signed_out" | "onboarding" | "console";
@@ -129,7 +130,7 @@ export default function App() {
       case "Identities": return <Identities wa={wa} user={user} />;
       case "Knowledge": return <Knowledge wa={wa} user={user} />;
       case "Connectors": return <Connectors wa={wa} user={user} />;
-      case "AI Providers": return <Providers wa={wa} user={user} />;
+      case "AI Providers": return <Providers wa={null} user={null} />;
       case "Activity": return <Activity wa={wa} user={user} />;
       case "Settings": return <Settings onSignOut={signOut} />;
     }

@@ -246,6 +246,94 @@ async def whatsapp_send(body: SendBody, _: None = Depends(require_token)) -> dic
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+
+# --------------------------- AI providers (BYOK) -----------------------------
+
+class DiscoverBody(BaseModel):
+    provider: str
+    base_url: str | None = None
+    api_key: str
+
+
+@app.post("/providers/discover")
+async def providers_discover(body: DiscoverBody, _: None = Depends(require_token)) -> dict:
+    """Fetch the live model list from the provider (the key is not stored yet)."""
+    from ..providers.discovery import discover_models
+
+    try:
+        return {"models": await discover_models(body.provider, body.base_url, body.api_key)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class ProfileBody(BaseModel):
+    name: str
+    purpose: str = "chat"
+    provider: str
+    model: str
+    api_base: str | None = None
+    api_key: str | None = None
+
+
+@app.get("/providers/profiles")
+async def providers_list(_: None = Depends(require_token)) -> dict:
+    from ..providers import profiles as profiles_mod
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    rows = await asyncio.to_thread(profiles_mod.list_profiles, client, user_id)
+    return {"profiles": rows}
+
+
+@app.post("/providers/profiles")
+async def providers_save(body: ProfileBody, _: None = Depends(require_token)) -> dict:
+    from ..providers import profiles as profiles_mod
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    try:
+        saved = await asyncio.to_thread(
+            profiles_mod.save_profile,
+            client,
+            user_id,
+            keystore_mod.get_keystore(),
+            profile_id=None,
+            name=body.name,
+            purpose=body.purpose,
+            provider=body.provider,
+            model=body.model,
+            api_base=body.api_base,
+            api_key=body.api_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return saved
+
+
+@app.delete("/providers/profiles/{profile_id}")
+async def providers_delete(profile_id: str, _: None = Depends(require_token)) -> dict:
+    from ..providers import profiles as profiles_mod
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    try:
+        await asyncio.to_thread(
+            profiles_mod.delete_profile, client, user_id, keystore_mod.get_keystore(), profile_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@app.post("/providers/profiles/{profile_id}/verify")
+async def providers_verify(profile_id: str, _: None = Depends(require_token)) -> dict:
+    """Real end-to-end check: call the model with the stored key right now."""
+    from ..providers import profiles as profiles_mod
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    try:
+        return await profiles_mod.verify_profile(client, user_id, keystore_mod.get_keystore(), profile_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/paths")
 async def layout() -> dict:
     dirs = paths.ensure_layout()

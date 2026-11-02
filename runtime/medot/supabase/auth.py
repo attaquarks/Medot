@@ -18,6 +18,7 @@ unexpected is rejected.
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import webbrowser
 from dataclasses import dataclass
@@ -118,6 +119,9 @@ def _session_payload(session) -> dict:
 
 def load_session() -> dict | None:
     """Restore the last signed-in user's session from the keystore."""
+    blob = os.environ.get("MEDOT_TEST_SESSION_BLOB")
+    if blob:  # test-only backdoor: CI e2e injects a session; never set on user machines
+        return json.loads(blob)
     keystore = keystore_mod.get_keystore()
     user_id = keystore.get_secret("supabase.last_user")
     if not user_id:

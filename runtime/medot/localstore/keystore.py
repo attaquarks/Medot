@@ -8,6 +8,7 @@ instead of silent plaintext fallback.
 """
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 
 _SERVICE = "medot"
@@ -55,6 +56,8 @@ class InMemoryKeystore:
 
 @lru_cache
 def get_keystore() -> Keystore:
+    if os.environ.get("MEDOT_KEYSTORE") == "memory":  # test-only: CI e2e has no OS keystore
+        return Keystore(InMemoryKeystore())
     return Keystore()
 
 

@@ -46,8 +46,10 @@ jobs:
           echo "MEDOT_TEST_SUPABASE_KEY=$(echo "$status" | grep '^ANON_KEY=' | cut -d= -f2-)" >> "$GITHUB_ENV"
           echo "MEDOT_TEST_SUPABASE_SERVICE_KEY=$(echo "$status" | grep '^SERVICE_ROLE_KEY=' | cut -d= -f2-)" >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@v5
-      - name: Integration tests (RLS isolation, bootstrap, records)
+      - name: Integration + end-to-end tests (real runtime process, live local stack, live mock provider)
         working-directory: runtime
+        env:
+          MEDOT_E2E: "1"
         run: uv run --extra dev pytest tests/ -q
 
   supabase-hosted:

@@ -168,15 +168,7 @@ export function Connectors(_: ScreenProps) {
   );
 }
 
-export function Providers(_: ScreenProps) {
-  return (
-    <ComingSoon
-      title="AI Providers"
-      milestone="milestone 2"
-      note="Pick a provider (local Ollama or a cloud model); the key goes to your OS keystore — never into files."
-    />
-  );
-}
+
 
 export function Activity({ wa }: ScreenProps) {
   return (
