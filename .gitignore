@@ -59,3 +59,6 @@ config.toml
 
 # Impeccable working artifacts (decision mocks, build state, reviews)
 .impeccable/
+# …but the durable design record and surface contract are tracked
+!.impeccable/design.json
+!.impeccable/surfaces/
