@@ -240,7 +240,7 @@ def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
 def test_engine_test_turn_end_to_end(runtime, mock_provider):
     """Talk to Me. from the desktop: a REAL engine turn — LangGraph graph,
     real litellm completion against the live mock provider, real persistence."""
-    client, user_id, admin = runtime
+    client, _user_id, admin = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
     saved = client.post(
         "/providers/profiles",
