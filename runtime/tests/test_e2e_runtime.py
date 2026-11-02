@@ -18,7 +18,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import httpx
 import pytest
-
 from conftest import supabase_available
 
 pytestmark = [
@@ -188,7 +187,7 @@ def test_discover_fetches_live_models(runtime, mock_provider):
 
 
 def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
-    client, user_id, admin = runtime
+    client, _user_id, admin = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
 
     saved = client.post(

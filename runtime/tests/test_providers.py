@@ -132,7 +132,7 @@ class FakeQuery:
 
 class FakeClient:
     def __init__(self):
-        self.tables = {}
+        self.tables: dict = {}
 
     def table(self, name):
         return FakeQuery(self.tables.setdefault(name, []))
@@ -144,15 +144,15 @@ def fake_client():
 
 
 def _save(client, keystore, **over):
-    args = dict(
-        profile_id=None,
-        name="Main",
-        purpose="chat",
-        provider="openai_compatible",
-        model="gpt-x",
-        api_base=None,
-        api_key="sk-test-123",
-    )
+    args = {
+        "profile_id": None,
+        "name": "Main",
+        "purpose": "chat",
+        "provider": "openai_compatible",
+        "model": "gpt-x",
+        "api_base": None,
+        "api_key": "sk-test-123",
+    }
     args.update(over)
     return profiles_mod.save_profile(client, "user-1", keystore, **args)
 
