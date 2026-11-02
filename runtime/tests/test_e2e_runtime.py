@@ -156,6 +156,20 @@ def runtime(tmp_path_factory):
         proc.terminate()
         raise RuntimeError("runtime did not report ready")
 
+    # the handshake prints BEFORE uvicorn binds — poll /health until reachable
+    reachable = False
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        try:
+            if httpx.get(f"http://127.0.0.1:{port}/health", timeout=2).status_code == 200:
+                reachable = True
+                break
+        except Exception:
+            time.sleep(0.25)
+    if not reachable:
+        proc.terminate()
+        raise RuntimeError("runtime never became reachable on its port")
+
     client = httpx.Client(
         base_url=f"http://127.0.0.1:{port}",
         headers={"X-Launch-Token": token},
