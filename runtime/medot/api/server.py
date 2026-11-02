@@ -334,6 +334,52 @@ async def providers_verify(profile_id: str, _: None = Depends(require_token)) ->
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+
+# --------------------------- Engine (Me. thinking) ---------------------------
+
+class TestTurnBody(BaseModel):
+    text: str
+
+
+@app.post("/engine/test-turn")
+async def engine_test_turn(body: TestTurnBody, _: None = Depends(require_token)) -> dict:
+    """Talk to Me. from the desktop: a full turn through the real engine.
+
+    Uses the desktop conversation (peer "desktop"); the reply is persisted
+    like any other exchange.
+    """
+    from langchain_core.messages import HumanMessage
+
+    from ..engine import wiring
+    from ..engine.turn import run_turn
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    peer = "desktop"
+    model, notice = await asyncio.to_thread(wiring.resolve_chat_model, client, user_id)
+    if model is None:
+        raise HTTPException(status_code=400, detail=notice)
+    # persist the user's message first, so the turn's history includes it
+    await asyncio.to_thread(
+        wa_manager.persist_message,
+        client,
+        user_id,
+        wa_manager.Envelope(
+            transport="desktop", message_id="", peer=peer, chat=peer,
+            sender=peer, text=body.text,
+        ),
+    )
+    instructions = await asyncio.to_thread(wiring.me_instructions, client, user_id)
+    history = await asyncio.to_thread(wiring.load_history, client, user_id, peer)
+    reply = await run_turn(
+        model,
+        instructions,
+        [*history, HumanMessage(content=body.text)],
+        thread_id=f"u:{user_id}:c:{peer}:r:turn",
+    )
+    await asyncio.to_thread(wiring.persist_outbound, client, user_id, peer, "desktop", reply)
+    return {"reply": reply}
+
+
 @app.get("/paths")
 async def layout() -> dict:
     dirs = paths.ensure_layout()

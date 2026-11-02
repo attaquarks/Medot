@@ -53,6 +53,9 @@ class FakeQuery:
         self._result = [r for r in self._rows if r.get(col) in vals]
         return self
 
+    def order(self, *_a, **_k):
+        return self
+
     def limit(self, _n):
         return self
 

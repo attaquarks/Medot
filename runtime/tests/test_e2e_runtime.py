@@ -235,3 +235,52 @@ def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
     deleted = client.delete(f"/providers/profiles/{profile_id}")
     assert deleted.status_code == 200
     assert client.get("/providers/profiles").json()["profiles"] == []
+
+
+def test_engine_test_turn_end_to_end(runtime, mock_provider):
+    """Talk to Me. from the desktop: a REAL engine turn — LangGraph graph,
+    real litellm completion against the live mock provider, real persistence."""
+    client, user_id, admin = runtime
+    base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
+    saved = client.post(
+        "/providers/profiles",
+        json={
+            "name": "E2E Chat",
+            "purpose": "chat",
+            "provider": "openai_compatible",
+            "model": "mock-large",
+            "api_base": base,
+            "api_key": "sk-e2e",
+        },
+    )
+    assert saved.status_code == 200
+
+    turn = client.post("/engine/test-turn", json={"text": "Reply with exactly: OK"})
+    assert turn.status_code == 200
+    assert "OK" in turn.json()["reply"]
+    assert mock_provider.last_completion.get("Authorization") == "Bearer sk-e2e"
+
+    # the exchange is persisted, RLS-scoped: the desktop conversation has the
+    # user's message and Me.'s reply
+    from supabase import create_client
+
+    as_user = create_client(os.environ["MEDOT_TEST_SUPABASE_URL"], os.environ["MEDOT_TEST_SUPABASE_KEY"])
+    as_user.postgrest.auth(
+        admin.auth.sign_in_with_password(
+            {"email": _runtime_email(admin), "password": "S3cret-Pass!"}
+        ).session.access_token
+    )
+    conversation = as_user.table("conversations").select("id").eq("peer", "desktop").execute().data
+    assert conversation, "desktop conversation missing"
+    rows = as_user.table("messages").select("direction,body").eq("conversation_id", conversation[0]["id"]).execute().data
+    directions = sorted(r["direction"] for r in rows)
+    assert directions == ["inbound", "outbound"]
+    assert any(r["body"] == "Reply with exactly: OK" for r in rows)
+
+
+def _runtime_email(admin) -> str:
+    # the module fixture created one user; find it by listing recent users
+    users = admin.auth.admin.list_user().users
+    match = [u for u in users if u.email and u.email.startswith("medot-e2e-") and "other" not in u.email]
+    assert match, "runtime user not found"
+    return match[0].email

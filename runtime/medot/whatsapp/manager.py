@@ -304,6 +304,15 @@ class ConnectionManager:
         self._client = None  # Supabase client of the connected user (RLS-scoped)
         self._user_id: str | None = None
 
+    def _bind_engine_hook(self, client, user_id: str) -> None:
+        """Me. answers inbound envelopes through the engine (M4a)."""
+        from ..engine import wiring
+
+        async def hook(envelope: Envelope) -> None:
+            await wiring.handle_inbound(client, user_id, envelope)
+
+        self.on_message = hook
+
     # -- inbound ------------------------------------------------------------
     async def _handle(self, envelope: Envelope) -> None:
         key = f"{envelope.transport}:{envelope.message_id}"
@@ -335,6 +344,7 @@ class ConnectionManager:
             raise RuntimeError("connection was recorded as not connected")
         self._client = client
         self._user_id = user_id
+        self._bind_engine_hook(client, user_id)
         transport = AgentPlatformTransport(api_key, on_inbound=self._handle)
         await transport.start()
         self._transports[AGENT_PLATFORM_NAME] = transport
@@ -362,6 +372,7 @@ class ConnectionManager:
         self._transports[BAILEYS_NAME] = transport
         self._client = client
         self._user_id = user_id
+        self._bind_engine_hook(client, user_id)
         return self.status()["baileys"]
 
     async def disconnect_baileys(self, client, user_id: str, *, record: bool = True) -> None:
