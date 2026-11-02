@@ -170,8 +170,8 @@ def runtime(tmp_path_factory):
         proc.kill()
     try:
         admin.auth.admin.delete_user(session["user"]["id"])
-    except Exception:
-        pass
+    except Exception as exc:  # the stack dies with the runner; cleanup is best effort
+        print(f"cleanup: user delete skipped ({exc})")
 
 
 def test_session_is_authenticated(runtime):
@@ -242,8 +242,8 @@ def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
     assert rows == []
     try:
         admin.auth.admin.delete_user(other.user.id)
-    except Exception:
-        pass
+    except Exception as exc:  # best-effort cleanup
+        print(f"cleanup: other-user delete skipped ({exc})")
 
     # delete clears the row and the keystore-backed credential
     deleted = client.delete(f"/providers/profiles/{profile_id}")
