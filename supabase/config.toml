@@ -10,7 +10,8 @@ port = 54322
 [studio]
 port = 54323
 
-[inbucket]
+# Was [inbucket] — renamed by the Supabase CLI (late 2026); same local mail catcher.
+[local_smtp]
 port = 54324
 
 [auth]
