@@ -42,15 +42,24 @@ jobs:
         working-directory: supabase
         run: |
           status=$(supabase status -o env)
-          echo "MEDOT_TEST_SUPABASE_URL=$(echo "$status" | grep '^API_URL=' | cut -d= -f2-)" >> "$GITHUB_ENV"
-          echo "MEDOT_TEST_SUPABASE_KEY=$(echo "$status" | grep '^ANON_KEY=' | cut -d= -f2-)" >> "$GITHUB_ENV"
-          echo "MEDOT_TEST_SUPABASE_SERVICE_KEY=$(echo "$status" | grep '^SERVICE_ROLE_KEY=' | cut -d= -f2-)" >> "$GITHUB_ENV"
+          echo "--- supabase status ---"
+          echo "$status"
+          url=$(echo "$status" | grep -i '^API_URL=' | cut -d= -f2-)
+          anon=$(echo "$status" | grep -i '^ANON_KEY=' | cut -d= -f2-)
+          service=$(echo "$status" | grep -i '^SERVICE_ROLE_KEY=' | cut -d= -f2-)
+          if [ -z "$url" ] || [ -z "$service" ]; then
+            echo "::error::could not read API_URL/SERVICE_ROLE_KEY from supabase status — the stack is not up"
+            exit 1
+          fi
+          echo "MEDOT_TEST_SUPABASE_URL=$url" >> "$GITHUB_ENV"
+          echo "MEDOT_TEST_SUPABASE_KEY=$anon" >> "$GITHUB_ENV"
+          echo "MEDOT_TEST_SUPABASE_SERVICE_KEY=$service" >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@v5
       - name: Integration + end-to-end tests (real runtime process, live local stack, live mock provider)
         working-directory: runtime
         env:
           MEDOT_E2E: "1"
-        run: uv run --extra dev pytest tests/ -q
+        run: uv run --extra dev pytest tests/ -q -rs -rs
 
   supabase-hosted:
     name: Integration tests — hosted Supabase
