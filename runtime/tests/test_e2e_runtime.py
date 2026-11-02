@@ -88,6 +88,14 @@ def mock_provider():
     server.shutdown()
 
 
+
+def _header(headers: dict | None, name: str) -> str | None:
+    """httpx lowercases header names on the wire — look up case-insensitively."""
+    if not headers:
+        return None
+    lowered = {k.lower(): v for k, v in headers.items()}
+    return lowered.get(name.lower())
+
 def _admin():
     from supabase import create_client
 
@@ -160,7 +168,10 @@ def runtime(tmp_path_factory):
         proc.wait(10)
     except subprocess.TimeoutExpired:
         proc.kill()
-    admin.auth.admin.delete_user(session["user"]["id"])
+    try:
+        admin.auth.admin.delete_user(session["user"]["id"])
+    except Exception:  # noqa: BLE001 - the stack dies with the runner; cleanup is best effort
+        pass
 
 
 def test_session_is_authenticated(runtime):
@@ -183,7 +194,7 @@ def test_discover_fetches_live_models(runtime, mock_provider):
     )
     assert response.status_code == 200
     assert "mock-large" in response.json()["models"]
-    assert mock_provider.last_model_request.get("Authorization") == "Bearer sk-e2e"
+    assert _header(mock_provider.last_model_request, "Authorization") == "Bearer sk-e2e"
 
 
 def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
@@ -211,7 +222,7 @@ def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
     assert body["ok"] is True
     assert body["sample"] == "OK"
     assert body["model_string"] == "openai/mock-large"
-    assert mock_provider.last_completion.get("Authorization") == "Bearer sk-e2e"
+    assert _header(mock_provider.last_completion, "Authorization") == "Bearer sk-e2e"
 
     # the profile is visible RLS-scoped through a user JWT
     listing = client.get("/providers/profiles")
@@ -229,7 +240,10 @@ def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
     other_client.postgrest.auth(other.session.access_token)
     rows = other_client.table("model_profiles").select("id").execute().data
     assert rows == []
-    admin.auth.admin.delete_user(other.user.id)
+    try:
+        admin.auth.admin.delete_user(other.user.id)
+    except Exception:  # noqa: BLE001 - best-effort cleanup
+        pass
 
     # delete clears the row and the keystore-backed credential
     deleted = client.delete(f"/providers/profiles/{profile_id}")
@@ -258,7 +272,7 @@ def test_engine_test_turn_end_to_end(runtime, mock_provider):
     turn = client.post("/engine/test-turn", json={"text": "Reply with exactly: OK"})
     assert turn.status_code == 200
     assert "OK" in turn.json()["reply"]
-    assert mock_provider.last_completion.get("Authorization") == "Bearer sk-e2e"
+    assert _header(mock_provider.last_completion, "Authorization") == "Bearer sk-e2e"
 
     # the exchange is persisted, RLS-scoped: the desktop conversation has the
     # user's message and Me.'s reply
