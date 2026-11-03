@@ -150,6 +150,19 @@ async def _send_no_model(client, user_id: str, envelope) -> None:
         log.warning("could not deliver the no-model notice")
 
 
+async def remember_exchange(client, user_id: str, user_text: str, reply: str) -> None:
+    """Episodes always; LLM fact extraction when an extraction profile exists."""
+    from ..memory import extraction as mem
+
+    try:
+        await asyncio.to_thread(mem.save_episode, client, user_id, "whatsapp", user_text, reply)
+        exchange = f"User said: {user_text}\nMe. replied: {reply}"
+        count = await mem.extract_facts(client, user_id, exchange)
+        log.info("remembered exchange (%d facts)", count)
+    except Exception:
+        log.exception("memory extraction failed")
+
+
 async def handle_inbound(client, user_id: str, envelope) -> None:
     """The manager's on_message hook: Me. thinks and replies on the same route."""
     if envelope.transport not in ("agent_platform", "baileys"):
@@ -174,5 +187,9 @@ async def handle_inbound(client, user_id: str, envelope) -> None:
             from ..whatsapp import manager as wa_manager
 
             await wa_manager.get_manager().send(reply, transport_name=envelope.transport, to=envelope.peer)
+            # M3a: remember the exchange (episodes always; LLM facts if an
+            # extraction profile exists) — never delays or breaks the reply
+            asyncio.create_task(remember_exchange(client, user_id, envelope.text, reply))
         except Exception:
             log.exception("turn failed for %s", user_id)
+

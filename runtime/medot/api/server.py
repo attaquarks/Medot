@@ -377,6 +377,7 @@ async def engine_test_turn(body: TestTurnBody, _: None = Depends(require_token))
         thread_id=f"u:{user_id}:c:{peer}:r:turn",
     )
     await asyncio.to_thread(wiring.persist_outbound, client, user_id, peer, "desktop", reply)
+    asyncio.create_task(wiring.remember_exchange(client, user_id, body.text, reply))
     return {"reply": reply}
 
 
