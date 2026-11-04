@@ -356,7 +356,9 @@ def test_engine_tool_approval_loop_end_to_end(runtime, mock_provider):
     # turn 2: the user's YES resumes the exact same thread; the tool executes
     decision = client.post("/engine/test-turn", json={"text": "YES"})
     assert decision.status_code == 200
-    assert "forgot" in decision.json()["reply"].lower() or "Done" in decision.json()["reply"]
+    approvals_now = as_user.table("approvals").select("id,status,payload").execute().data
+    assert "forgot" in decision.json()["reply"].lower() or "Done" in decision.json()["reply"], (
+        f"reply: {decision.json()} | approvals: {approvals_now} | runtime: {output[-15:]}")
 
     approvals_after = as_user.table("approvals").select("status").execute().data
     assert approvals_after[0]["status"] == "approved"
