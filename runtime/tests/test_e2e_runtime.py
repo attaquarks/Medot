@@ -217,7 +217,7 @@ def runtime(tmp_path_factory):
 
 
 def test_session_is_authenticated(runtime):
-    client, user_id, _email, _admin = runtime
+    client, user_id, _email, _admin, _output = runtime
     response = client.get("/session")
     assert response.status_code == 200
     assert response.json()["authenticated"] is True
