@@ -214,7 +214,7 @@ def test_session_is_authenticated(runtime):
 
 
 def test_discover_fetches_live_models(runtime, mock_provider):
-    client, _user_id, email, _admin = runtime
+    client, _user_id, _email, _admin = runtime
     response = client.post(
         "/providers/discover",
         json={
@@ -229,7 +229,7 @@ def test_discover_fetches_live_models(runtime, mock_provider):
 
 
 def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
-    client, _user_id, email, _admin = runtime
+    client, _user_id, _email, _admin = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
 
     saved = client.post(
@@ -272,7 +272,7 @@ def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
 def test_engine_test_turn_end_to_end(runtime, mock_provider):
     """Talk to Me. from the desktop: a REAL engine turn — LangGraph graph,
     real litellm completion against the live mock provider, real persistence."""
-    client, _user_id, email, admin = runtime
+    client, _user_id, _email, admin = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
     saved = client.post(
         "/providers/profiles",
@@ -314,7 +314,7 @@ def test_engine_test_turn_end_to_end(runtime, mock_provider):
 def test_engine_tool_approval_loop_end_to_end(runtime, mock_provider):
     """The full M4b loop, for real: Me. decides to use a destructive tool →
     interrupt → approval row → the user's YES resumes it → run closes."""
-    client, _user_id, email, admin = runtime
+    client, _user_id, _email, admin = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
     saved = client.post(
         "/providers/profiles",
