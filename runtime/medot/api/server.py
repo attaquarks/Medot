@@ -351,7 +351,7 @@ async def engine_test_turn(body: TestTurnBody, _: None = Depends(require_token))
     user_id, client = await asyncio.to_thread(_user_client)
     try:
         await engine_wiring._run_inbound_flow(client, user_id, "desktop", "desktop", body.text)
-    except Exception as exc:  # noqa: BLE001 - surface engine failures to the console
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     rows = await asyncio.to_thread(engine_wiring.load_history, client, user_id, "desktop")
