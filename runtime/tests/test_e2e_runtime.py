@@ -288,7 +288,7 @@ def test_engine_test_turn_end_to_end(runtime, mock_provider):
     assert saved.status_code == 200
 
     turn = client.post("/engine/test-turn", json={"text": "Reply with exactly: OK"})
-    assert turn.status_code == 200
+    assert turn.status_code == 200, f"engine turn failed: {turn.text[:400]}"
     assert "OK" in turn.json()["reply"]
     assert _header(mock_provider.last_completion, "Authorization") == "Bearer sk-e2e"
 
@@ -325,7 +325,7 @@ def test_engine_tool_approval_loop_end_to_end(runtime, mock_provider):
 
     # turn 1: the model calls forget_fact → the flow interrupts and proposes
     turn = client.post("/engine/test-turn", json={"text": "please forget the thing"})
-    assert turn.status_code == 200
+    assert turn.status_code == 200, f"engine turn failed: {turn.text[:400]}"
     assert "YES" in turn.json()["reply"], turn.json()
 
     # the approval is pending, RLS-scoped, with the thread id for resume
