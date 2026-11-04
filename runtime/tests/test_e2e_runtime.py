@@ -67,11 +67,12 @@ class _MockProvider(ThreadingHTTPServer):
                     outer.last_completion = dict(self.headers)
                     length = int(self.headers.get("Content-Length") or 0)
                     body = json.loads(self.rfile.read(length) or b"{}") if length else {}
-                    last_user = next(
-                        (m.get("content") for m in reversed(body.get("messages", [])) if m.get("role") == "user"),
-                        "",
+                    msgs = body.get("messages", [])
+                    asked_to_forget = any(
+                        "forget" in str(m.get("content", "")).lower() for m in msgs
                     )
-                    if isinstance(last_user, str) and "forget" in last_user.lower():
+                    tool_ran = any(m.get("role") == "tool" for m in msgs)
+                    if asked_to_forget and not tool_ran:
                         self._send({
                             "choices": [{"message": {
                                 "role": "assistant", "content": None,
@@ -84,6 +85,8 @@ class _MockProvider(ThreadingHTTPServer):
                                 }],
                             }}],
                         })
+                    elif tool_ran:
+                        self._send({"choices": [{"message": {"content": "Done — forgot it."}}]})
                     else:
                         self._send({"choices": [{"message": {"content": "OK"}}]})
                 else:
