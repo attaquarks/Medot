@@ -237,6 +237,10 @@ def _decide(client, user_id: str, approval_id: str, approved: bool) -> None:
     ).eq("id", approval_id).execute()
 
 
+def _insert_approval(client, row: dict) -> None:
+    client.table("approvals").insert(row).execute()
+
+
 def _log_activity(client, user_id: str, identity_id: str | None, event: str, detail: dict) -> None:
     client.table("activity_events").insert(
         {"user_id": user_id, "identity_id": identity_id, "event": event, "detail": detail}
@@ -344,7 +348,8 @@ async def _run_inbound_flow(client, user_id: str, peer: str, transport: str, tex
             "args": result["interrupt"].get("args"),
         }
         await asyncio.to_thread(
-            client.table("approvals").insert,
+            _insert_approval,
+            client,
             {
                 "user_id": user_id,
                 "run_id": run_row,
