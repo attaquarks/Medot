@@ -202,11 +202,11 @@ def _finish_agent_run(client, run_row_id: str | None, status: str, error: str | 
 def _pending_approval(client, user_id: str, peer: str) -> dict | None:
     rows = (
         client.table("approvals")
-        .select("id,action,summary,payload,created_at,expires_at")
+        .select("id,action,summary,payload,expires_at")
         .eq("user_id", user_id)
         .eq("status", "pending")
         .eq("payload->>peer", peer)
-        .order("created_at", desc=True)
+        .order("id", desc=True)
         .limit(1)
         .execute()
         .data
