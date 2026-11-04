@@ -350,6 +350,16 @@ async def engine_test_turn(body: TestTurnBody, _: None = Depends(require_token))
 
     user_id, client = await asyncio.to_thread(_user_client)
     try:
+        # persist the user's message first, exactly like the WhatsApp path does
+        await asyncio.to_thread(
+            wa_manager.persist_message,
+            client,
+            user_id,
+            wa_manager.Envelope(
+                transport="desktop", message_id="", peer="desktop", chat="desktop",
+                sender="desktop", text=body.text,
+            ),
+        )
         await engine_wiring._run_inbound_flow(client, user_id, "desktop", "desktop", body.text)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
