@@ -39,11 +39,29 @@ class ProfileChatModel(BaseChatModel):
         """Bind OpenAI-format tool schemas; returns a copy carrying them."""
         return self.model_copy(update={"bound_tools": tools})
 
-    def _convert(self, messages: list[BaseMessage]) -> list[dict[str, str]]:
-        return [
-            {"role": "assistant" if m.type == "ai" else "system" if m.type == "system" else "user", "content": str(m.content)}
-            for m in messages
-        ]
+    def _convert(self, messages: list[BaseMessage]) -> list[dict[str, Any]]:
+        """LangChain messages -> OpenAI wire format, tool-calls included."""
+        out: list[dict[str, Any]] = []
+        for m in messages:
+            if m.type == "ai":
+                entry: dict[str, Any] = {"role": "assistant", "content": m.content or None}
+                if getattr(m, "tool_calls", None):
+                    entry["tool_calls"] = [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {"name": tc["name"], "arguments": json.dumps(tc.get("args", {}))},
+                        }
+                        for tc in m.tool_calls
+                    ]
+                out.append(entry)
+            elif m.type == "tool":
+                out.append({"role": "tool", "tool_call_id": m.tool_call_id, "content": str(m.content)})
+            elif m.type == "system":
+                out.append({"role": "system", "content": str(m.content)})
+            else:
+                out.append({"role": "user", "content": str(m.content)})
+        return out
 
     def _generate(
         self,
