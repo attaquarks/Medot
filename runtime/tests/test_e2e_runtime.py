@@ -206,7 +206,7 @@ def runtime(tmp_path_factory):
 
 
 def test_session_is_authenticated(runtime):
-    client, user_id, email, _admin = runtime
+    client, user_id, _email, _admin = runtime
     response = client.get("/session")
     assert response.status_code == 200
     assert response.json()["authenticated"] is True
@@ -272,7 +272,7 @@ def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
 def test_engine_test_turn_end_to_end(runtime, mock_provider):
     """Talk to Me. from the desktop: a REAL engine turn — LangGraph graph,
     real litellm completion against the live mock provider, real persistence."""
-    client, _user_id, _email, admin = runtime
+    client, _user_id, email, admin = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
     saved = client.post(
         "/providers/profiles",
