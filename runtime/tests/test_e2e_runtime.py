@@ -305,7 +305,8 @@ def test_engine_test_turn_end_to_end(runtime, mock_provider):
     conversation = as_user.table("conversations").select("id").eq("peer", "desktop").execute().data
     assert conversation, "desktop conversation missing"
     rows = as_user.table("messages").select("direction,body").eq("conversation_id", conversation[0]["id"]).execute().data
-    directions = sorted(r["direction"] for r in rows)
+    assert sorted(r["direction"] for r in rows) == ["inbound", "outbound"], (
+        f"messages: {rows} | conversations: {conversation}")
     assert directions == ["inbound", "outbound"]
     assert any(r["body"] == "Reply with exactly: OK" for r in rows)
 
@@ -336,7 +337,8 @@ def test_engine_tool_approval_loop_end_to_end(runtime, mock_provider):
         admin.auth.sign_in_with_password({"email": email, "password": "S3cret-Pass!"}).session.access_token
     )
     approvals = as_user.table("approvals").select("id,status,action,payload").execute().data
-    assert len(approvals) == 1 and approvals[0]["status"] == "pending"
+    assert len(approvals) == 1 and approvals[0]["status"] == "pending", (
+        f"approvals: {approvals}")
     assert approvals[0]["action"] == "forget_fact"
     assert approvals[0]["payload"]["peer"] == "desktop"
 
