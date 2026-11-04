@@ -305,10 +305,9 @@ async def _run_inbound_flow(client, user_id: str, peer: str, transport: str, tex
     if pending:
         decision = parse_decision(text)
         if decision is None:
-            await wa_manager.get_manager().send(
+            await _deliver(
+                wa_manager.get_manager(), transport, peer,
                 "Please reply YES to allow it, or NO to keep everything.",
-                transport_name=transport,
-                to=peer,
             )
             return
         thread_id = (pending.get("payload") or {}).get("thread_id", "")
