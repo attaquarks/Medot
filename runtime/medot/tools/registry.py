@@ -148,6 +148,7 @@ def ensure_me_grants(client, user_id: str, identity_id: str) -> dict[str, dict]:
         for tool in DEFAULT_TOOLS:
             client.table("identity_tool_grants").insert(
                 {
+                    "user_id": user_id,
                     "identity_id": identity_id,
                     "tool_key": tool.key,
                     "requires_approval": tool.requires_approval,
