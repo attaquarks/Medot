@@ -314,7 +314,7 @@ def test_engine_test_turn_end_to_end(runtime, mock_provider):
 def test_engine_tool_approval_loop_end_to_end(runtime, mock_provider):
     """The full M4b loop, for real: Me. decides to use a destructive tool →
     interrupt → approval row → the user's YES resumes it → run closes."""
-    client, user_id, email, admin = runtime
+    client, _user_id, email, admin = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
     saved = client.post(
         "/providers/profiles",
