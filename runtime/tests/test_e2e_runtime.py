@@ -156,6 +156,12 @@ def runtime(tmp_path_factory):
         text=True,
         encoding="utf-8",
     )
+    output: list[str] = []
+
+    def _drain():
+        for line in proc.stdout:
+            output.extend((line,))
+
     token = None
     deadline = time.time() + 30
     while time.time() < deadline:
@@ -185,14 +191,16 @@ def runtime(tmp_path_factory):
             time.sleep(0.25)
     if not reachable:
         proc.terminate()
-        raise RuntimeError("runtime never became reachable on its port")
+        raise RuntimeError(f"runtime never became reachable; output: {output[-30:]}")
+
+    threading.Thread(target=_drain, daemon=True).start()
 
     client = httpx.Client(
         base_url=f"http://127.0.0.1:{port}",
         headers={"X-Launch-Token": token},
         timeout=30,
     )
-    yield client, session["user"]["id"], email, admin
+    yield client, session["user"]["id"], email, admin, output
     client.close()
     proc.terminate()
     try:
@@ -214,7 +222,7 @@ def test_session_is_authenticated(runtime):
 
 
 def test_discover_fetches_live_models(runtime, mock_provider):
-    client, _user_id, _email, _admin = runtime
+    client, _user_id, _email, _admin, _output = runtime
     response = client.post(
         "/providers/discover",
         json={
@@ -229,7 +237,7 @@ def test_discover_fetches_live_models(runtime, mock_provider):
 
 
 def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
-    client, _user_id, _email, _admin = runtime
+    client, _user_id, _email, _admin, _output = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
 
     saved = client.post(
@@ -272,7 +280,7 @@ def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
 def test_engine_test_turn_end_to_end(runtime, mock_provider):
     """Talk to Me. from the desktop: a REAL engine turn — LangGraph graph,
     real litellm completion against the live mock provider, real persistence."""
-    client, _user_id, email, admin = runtime
+    client, _user_id, _email, admin, output = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
     saved = client.post(
         "/providers/profiles",
@@ -306,7 +314,7 @@ def test_engine_test_turn_end_to_end(runtime, mock_provider):
     assert conversation, "desktop conversation missing"
     rows = as_user.table("messages").select("direction,body").eq("conversation_id", conversation[0]["id"]).execute().data
     assert sorted(r["direction"] for r in rows) == ["inbound", "outbound"], (
-        f"messages: {rows} | conversations: {conversation}")
+        f"messages: {rows} | admin: {admin.table('messages').select('direction,body').execute().data} | runtime: {output[-15:]}")
     assert directions == ["inbound", "outbound"]
     assert any(r["body"] == "Reply with exactly: OK" for r in rows)
 
@@ -315,7 +323,7 @@ def test_engine_test_turn_end_to_end(runtime, mock_provider):
 def test_engine_tool_approval_loop_end_to_end(runtime, mock_provider):
     """The full M4b loop, for real: Me. decides to use a destructive tool →
     interrupt → approval row → the user's YES resumes it → run closes."""
-    client, _user_id, email, admin = runtime
+    client, _user_id, _email, admin, output = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
     saved = client.post(
         "/providers/profiles",
@@ -337,8 +345,9 @@ def test_engine_tool_approval_loop_end_to_end(runtime, mock_provider):
         admin.auth.sign_in_with_password({"email": email, "password": "S3cret-Pass!"}).session.access_token
     )
     approvals = as_user.table("approvals").select("id,status,action,payload").execute().data
+    admin_rows = admin.table("approvals").select("id,status,action,payload,user_id").execute().data
     assert len(approvals) == 1 and approvals[0]["status"] == "pending", (
-        f"approvals: {approvals}")
+        f"approvals(rls): {approvals} | approvals(admin): {admin_rows} | runtime: {output[-15:]}")
     assert approvals[0]["action"] == "forget_fact"
     assert approvals[0]["payload"]["peer"] == "desktop"
 
