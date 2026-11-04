@@ -346,12 +346,13 @@ async def engine_test_turn(body: TestTurnBody, _: None = Depends(require_token))
     """Talk to Me. from the desktop: the full real flow (turn, tools,
     approvals) against the desktop conversation (peer "desktop"). If an
     approval is pending for that conversation, this message is the decision."""
+    from ..engine import wiring as engine_wiring
+
     user_id, client = await asyncio.to_thread(_user_client)
     try:
-        await wa_manager._run_inbound_flow(client, user_id, "desktop", "desktop", body.text)
-    except Exception as exc:
+        await engine_wiring._run_inbound_flow(client, user_id, "desktop", "desktop", body.text)
+    except Exception as exc:  # noqa: BLE001 - surface engine failures to the console
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    from ..engine import wiring as engine_wiring
 
     rows = await asyncio.to_thread(engine_wiring.load_history, client, user_id, "desktop")
     reply = next((m.content for m in reversed(rows) if m.type == "ai"), "")
