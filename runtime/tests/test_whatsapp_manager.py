@@ -36,7 +36,21 @@ class FakeQuery:
         self._pending = patch
         return self
 
+    def delete(self):
+        self._deleting = True
+        return self
+
     def eq(self, col, val):
+        if getattr(self, "_deleting", False):
+            self._rows[:] = [r for r in self._rows if r.get(col) != val]
+            return self
+        if "->>" in col:  # jsonb arrow, e.g. payload->>peer
+            base, key = col.split("->>", 1)
+            self._result = [
+                r for r in self._rows
+                if isinstance(r.get(base.strip()), dict) and r[base.strip()].get(key.strip()) == val
+            ]
+            return self
         if self._upsert_row is not None:
             # upsert + eq is not a real supabase-py pattern; support the common path
             pass
@@ -47,6 +61,11 @@ class FakeQuery:
             self._last = [dict(self._pending)]
         else:
             self._result = [r for r in self._rows if r.get(col) == val]
+        return self
+
+    def ilike(self, col, pattern):
+        needle = pattern.strip("%").lower()
+        self._result = [r for r in self._rows if needle in str(r.get(col, "")).lower()]
         return self
 
     def in_(self, col, vals):

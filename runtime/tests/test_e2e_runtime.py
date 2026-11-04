@@ -65,10 +65,27 @@ class _MockProvider(ThreadingHTTPServer):
             def do_POST(self):
                 if self.path.endswith("/chat/completions"):
                     outer.last_completion = dict(self.headers)
-                    self._send({
-                        "choices": [{"message": {"content": "OK"}}],
-                        "usage": {"total_tokens": 5},
-                    })
+                    length = int(self.headers.get("Content-Length") or 0)
+                    body = json.loads(self.rfile.read(length) or b"{}") if length else {}
+                    last_user = next(
+                        (m.get("content") for m in reversed(body.get("messages", [])) if m.get("role") == "user"),
+                        "",
+                    )
+                    if isinstance(last_user, str) and "forget" in last_user.lower():
+                        self._send({
+                            "choices": [{"message": {
+                                "role": "assistant", "content": None,
+                                "tool_calls": [{
+                                    "id": "call_1", "type": "function",
+                                    "function": {
+                                        "name": "forget_fact",
+                                        "arguments": json.dumps({"match": "the thing"}),
+                                    },
+                                }],
+                            }}],
+                        })
+                    else:
+                        self._send({"choices": [{"message": {"content": "OK"}}]})
                 else:
                     self._send({"error": "not found"}, 404)
 
@@ -292,3 +309,43 @@ def test_engine_test_turn_end_to_end(runtime, mock_provider):
     assert directions == ["inbound", "outbound"]
     assert any(r["body"] == "Reply with exactly: OK" for r in rows)
 
+
+
+def test_engine_tool_approval_loop_end_to_end(runtime, mock_provider):
+    """The full M4b loop, for real: Me. decides to use a destructive tool →
+    interrupt → approval row → the user's YES resumes it → run closes."""
+    client, user_id, email, admin = runtime
+    base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
+    saved = client.post(
+        "/providers/profiles",
+        json={"name": "E2E Chat", "purpose": "chat", "provider": "openai_compatible",
+              "model": "mock-large", "api_base": base, "api_key": "sk-e2e"},
+    )
+    assert saved.status_code == 200
+
+    # turn 1: the model calls forget_fact → the flow interrupts and proposes
+    turn = client.post("/engine/test-turn", json={"text": "please forget the thing"})
+    assert turn.status_code == 200
+    assert "YES" in turn.json()["reply"], turn.json()
+
+    # the approval is pending, RLS-scoped, with the thread id for resume
+    from supabase import create_client
+
+    as_user = create_client(os.environ["MEDOT_TEST_SUPABASE_URL"], os.environ["MEDOT_TEST_SUPABASE_KEY"])
+    as_user.postgrest.auth(
+        admin.auth.sign_in_with_password({"email": _email, "password": "S3cret-Pass!"}).session.access_token
+    )
+    approvals = as_user.table("approvals").select("id,status,action,payload").execute().data
+    assert len(approvals) == 1 and approvals[0]["status"] == "pending"
+    assert approvals[0]["action"] == "forget_fact"
+    assert approvals[0]["payload"]["peer"] == "desktop"
+
+    # turn 2: the user's YES resumes the exact same thread; the tool executes
+    decision = client.post("/engine/test-turn", json={"text": "YES"})
+    assert decision.status_code == 200
+    assert "forgot" in decision.json()["reply"].lower() or "Done" in decision.json()["reply"]
+
+    approvals_after = as_user.table("approvals").select("status").execute().data
+    assert approvals_after[0]["status"] == "approved"
+    runs = as_user.table("agent_runs").select("status").execute().data
+    assert any(r["status"] == "succeeded" for r in runs)

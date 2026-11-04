@@ -343,41 +343,18 @@ class TestTurnBody(BaseModel):
 
 @app.post("/engine/test-turn")
 async def engine_test_turn(body: TestTurnBody, _: None = Depends(require_token)) -> dict:
-    """Talk to Me. from the desktop: a full turn through the real engine.
-
-    Uses the desktop conversation (peer "desktop"); the reply is persisted
-    like any other exchange.
-    """
-    from langchain_core.messages import HumanMessage
-
-    from ..engine import wiring
-    from ..engine.turn import run_turn
-
+    """Talk to Me. from the desktop: the full real flow (turn, tools,
+    approvals) against the desktop conversation (peer "desktop"). If an
+    approval is pending for that conversation, this message is the decision."""
     user_id, client = await asyncio.to_thread(_user_client)
-    peer = "desktop"
-    model, notice = await asyncio.to_thread(wiring.resolve_chat_model, client, user_id)
-    if model is None:
-        raise HTTPException(status_code=400, detail=notice)
-    # persist the user's message first, so the turn's history includes it
-    await asyncio.to_thread(
-        wa_manager.persist_message,
-        client,
-        user_id,
-        wa_manager.Envelope(
-            transport="desktop", message_id="", peer=peer, chat=peer,
-            sender=peer, text=body.text,
-        ),
-    )
-    instructions = await asyncio.to_thread(wiring.me_instructions, client, user_id)
-    history = await asyncio.to_thread(wiring.load_history, client, user_id, peer)
-    reply = await run_turn(
-        model,
-        instructions,
-        [*history, HumanMessage(content=body.text)],
-        thread_id=f"u:{user_id}:c:{peer}:r:turn",
-    )
-    await asyncio.to_thread(wiring.persist_outbound, client, user_id, peer, "desktop", reply)
-    asyncio.create_task(wiring.remember_exchange(client, user_id, body.text, reply))
+    try:
+        await wa_manager._run_inbound_flow(client, user_id, "desktop", "desktop", body.text)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    from ..engine import wiring as engine_wiring
+
+    rows = await asyncio.to_thread(engine_wiring.load_history, client, user_id, "desktop")
+    reply = next((m.content for m in reversed(rows) if m.type == "ai"), "")
     return {"reply": reply}
 
 

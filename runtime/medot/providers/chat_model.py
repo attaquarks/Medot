@@ -34,6 +34,10 @@ class ProfileChatModel(BaseChatModel):
     def _llm_type(self) -> str:
         return "litellm-profile"
 
+    def bind_tools(self, tools: list[dict], **_: Any) -> ProfileChatModel:
+        """Bind OpenAI-format tool schemas; returns a copy carrying them."""
+        return self.model_copy(update={"bound_tools": tools})
+
     def _convert(self, messages: list[BaseMessage]) -> list[dict[str, str]]:
         return [
             {"role": "assistant" if m.type == "ai" else "system" if m.type == "system" else "user", "content": str(m.content)}
@@ -63,9 +67,18 @@ class ProfileChatModel(BaseChatModel):
             messages=self._convert(messages),
             max_tokens=kwargs.pop("max_tokens", 1024),
             num_retries=0,
+            tools=self.bound_tools or None,
             **kwargs,
         )
-        message = AIMessage(content=response.choices[0].message.content or "")
+        raw = response.choices[0].message
+        tool_calls = []
+        for tc in getattr(raw, "tool_calls", None) or []:
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+            except ValueError:
+                args = {}
+            tool_calls.append({"name": tc.function.name, "args": args, "id": tc.id, "type": "tool_call"})
+        message = AIMessage(content=raw.content or "", tool_calls=tool_calls)
         return ChatResult(generations=[ChatGeneration(message=message)])
 
     async def _astream(
