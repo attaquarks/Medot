@@ -287,7 +287,7 @@ async def _deliver(manager, transport: str, peer: str, text: str) -> None:
 
 async def _run_inbound_flow(client, user_id: str, peer: str, transport: str, text: str) -> None:
     """The whole Me. flow: approvals first, then a fresh agent turn."""
-    model, notice = await asyncio.to_thread(resolve_chat_model, client, user_id)
+    model, _notice = await asyncio.to_thread(resolve_chat_model, client, user_id)
     if model is None:
         if peer not in _no_model_notified:
             _no_model_notified.add(peer)
