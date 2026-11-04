@@ -215,7 +215,7 @@ def _pending_approval(client, user_id: str, peer: str) -> dict | None:
         return None
     row = rows[0]
     expires = row.get("expires_at")
-    if expires and datetime.fromisoformat(str(expires).replace("Z", "+00:00")) < datetime.now(UTC):
+    if expires and datetime.fromisoformat(str(expires)) < datetime.now(UTC):
         client.table("approvals").update({"status": "expired"}).eq("id", row["id"]).execute()
         return None
     return row

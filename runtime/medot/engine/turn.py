@@ -21,9 +21,12 @@ def seed_messages(system_prompt: str, history: list[BaseMessage]) -> list[BaseMe
 def _last_reply(messages: list[Any]) -> str:
     """The last AI message with content and no pending tool calls."""
     for message in reversed(messages):
-        if getattr(message, "type", "") == "ai" and getattr(message, "content", ""):
-            if not getattr(message, "tool_calls", None):
-                return str(message.content)
+        if (
+            getattr(message, "type", "") == "ai"
+            and getattr(message, "content", "")
+            and not getattr(message, "tool_calls", None)
+        ):
+            return str(message.content)
     return ""
 
 
