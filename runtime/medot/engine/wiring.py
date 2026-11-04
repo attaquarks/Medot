@@ -51,6 +51,7 @@ async def _saver_for(user_id: str) -> Any:
         root = paths.ensure_layout()["checkpoints"]
         conn = await aiosqlite.connect(str(root / f"{user_id}.sqlite"))
         saver = AsyncSqliteSaver(conn)
+        await saver.setup()  # create the checkpoint tables before first use
         _savers[user_id] = saver
         return saver
     except Exception:  # noqa: BLE001 - execution state only; never canonical
