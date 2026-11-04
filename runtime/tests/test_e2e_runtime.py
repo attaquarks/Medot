@@ -280,7 +280,7 @@ def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
 def test_engine_test_turn_end_to_end(runtime, mock_provider):
     """Talk to Me. from the desktop: a REAL engine turn — LangGraph graph,
     real litellm completion against the live mock provider, real persistence."""
-    client, _user_id, _email, admin, output = runtime
+    client, _user_id, email, admin, output = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
     saved = client.post(
         "/providers/profiles",
@@ -315,7 +315,6 @@ def test_engine_test_turn_end_to_end(runtime, mock_provider):
     rows = as_user.table("messages").select("direction,body").eq("conversation_id", conversation[0]["id"]).execute().data
     assert sorted(r["direction"] for r in rows) == ["inbound", "outbound"], (
         f"messages: {rows} | admin: {admin.table('messages').select('direction,body').execute().data} | runtime: {output[-15:]}")
-    assert directions == ["inbound", "outbound"]
     assert any(r["body"] == "Reply with exactly: OK" for r in rows)
 
 
