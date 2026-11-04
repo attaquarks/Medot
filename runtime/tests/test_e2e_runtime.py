@@ -206,7 +206,7 @@ def runtime(tmp_path_factory):
 
 
 def test_session_is_authenticated(runtime):
-    client, user_id, _email, _admin = runtime
+    client, user_id, email, _admin = runtime
     response = client.get("/session")
     assert response.status_code == 200
     assert response.json()["authenticated"] is True
@@ -214,7 +214,7 @@ def test_session_is_authenticated(runtime):
 
 
 def test_discover_fetches_live_models(runtime, mock_provider):
-    client, _user_id, _email, _admin = runtime
+    client, _user_id, email, _admin = runtime
     response = client.post(
         "/providers/discover",
         json={
@@ -229,7 +229,7 @@ def test_discover_fetches_live_models(runtime, mock_provider):
 
 
 def test_profile_save_verify_list_delete_end_to_end(runtime, mock_provider):
-    client, _user_id, _email, _admin = runtime
+    client, _user_id, email, _admin = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
 
     saved = client.post(
@@ -333,7 +333,7 @@ def test_engine_tool_approval_loop_end_to_end(runtime, mock_provider):
 
     as_user = create_client(os.environ["MEDOT_TEST_SUPABASE_URL"], os.environ["MEDOT_TEST_SUPABASE_KEY"])
     as_user.postgrest.auth(
-        admin.auth.sign_in_with_password({"email": _email, "password": "S3cret-Pass!"}).session.access_token
+        admin.auth.sign_in_with_password({"email": email, "password": "S3cret-Pass!"}).session.access_token
     )
     approvals = as_user.table("approvals").select("id,status,action,payload").execute().data
     assert len(approvals) == 1 and approvals[0]["status"] == "pending"
