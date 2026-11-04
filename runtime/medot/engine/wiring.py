@@ -359,7 +359,7 @@ async def _run_inbound_flow(client, user_id: str, peer: str, transport: str, tex
         await asyncio.to_thread(_finish_agent_run, client, run_row, "awaiting_approval")
         proposal = f"{result['interrupt'].get('proposal', 'May I?')}\nReply YES to allow, NO to keep everything."
         await asyncio.to_thread(persist_outbound, client, user_id, peer, transport, proposal)
-        await wa_manager.get_manager().send(proposal, transport_name=transport, to=peer)
+        await _deliver(wa_manager.get_manager(), transport, peer, proposal)
         return
 
     reply = result["reply"] or "I'm here — say more?"
