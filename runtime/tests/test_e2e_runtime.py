@@ -461,8 +461,18 @@ def test_engine_slug_routes_to_specialist_end_to_end(runtime, mock_provider):
     turn = client.post("/engine/test-turn", json={"text": "/herb-coach what should I plant?"})
     assert turn.status_code == 200, f"engine turn failed: {turn.text[:400]}"
 
+    listing = client.get("/identities")
+    rows = {i["slug"]: i for i in listing.json()["identities"]}
+    herb = {k: rows.get("herb-coach", {}).get(k) for k in ("status", "model_profile_id")}
+    diag = (
+        f"reply: {turn.json()['reply'][:200]} | herb row: {herb} | identities: "
+        f"{[(i['slug'], i['status']) for i in listing.json()['identities']]} | runtime: {_output[-15:]}"
+    )
+
     system = next(m for m in mock_provider.last_body["messages"] if m["role"] == "system")
-    assert "You advise on herbs. Always mention soil." in system["content"], system["content"][:600]
+    assert "You advise on herbs. Always mention soil." in system["content"], (
+        f"DIAG {diag} | system: {system['content'][:300]}"
+    )
 
     from supabase import create_client
 
