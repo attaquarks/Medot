@@ -69,9 +69,10 @@ class _MockProvider(ThreadingHTTPServer):
                     body = json.loads(self.rfile.read(length) or b"{}") if length else {}
                     outer.last_body = body
                     msgs = body.get("messages", [])
-                    asked_to_forget = any(
-                        "forget" in str(m.get("content", "")).lower() for m in msgs
-                    )
+                    # gate on the CURRENT message only — history from earlier
+                    # tests must not trigger the forget tool call
+                    user_texts = [str(m.get("content", "")) for m in msgs if m.get("role") == "user"]
+                    asked_to_forget = bool(user_texts) and "forget" in user_texts[-1].lower()
                     tool_ran = any(m.get("role") == "tool" for m in msgs)
                     if asked_to_forget and not tool_ran:
                         self._send({
@@ -396,6 +397,7 @@ def test_engine_retrieves_knowledge_into_prompt(runtime, mock_provider):
 
     turn = client.post("/engine/test-turn", json={"text": "What can I cook for Priya?"})
     assert turn.status_code == 200, f"engine turn failed: {turn.text[:400]}"
+    assert "OK" in turn.json()["reply"], f"expected a completed turn: {turn.json()}"
 
     system = next(m for m in mock_provider.last_body["messages"] if m["role"] == "system")
     assert "What you remember that may be relevant here:" in system["content"], system["content"][:600]
