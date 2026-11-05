@@ -55,19 +55,19 @@ def _envelope(text: str, peer: str = "user:509") -> Envelope:
 
 def _me_world(client):
     """identity + instructions + chat profile."""
-    client.tables.setdefault("identities", []).append({"id": "me-1", "slug": "me"})
+    client.tables.setdefault("identities", []).append({"id": "me-1", "user_id": "u1", "slug": "me"})
     client.tables.setdefault("identity_instructions", []).append(
         {"identity_id": "me-1", "version": 1, "is_active": True, "content_md": "You are Me. Be kind."}
     )
     client.tables.setdefault("model_profiles", []).append(
-        {"id": "prof-1", "purpose": "chat", "provider": "openai_compatible", "model": "gpt-x", "api_base": None}
+        {"id": "prof-1", "user_id": "u1", "purpose": "chat", "provider": "openai_compatible", "model": "gpt-x", "api_base": None}
     )
     client.tables.setdefault("knowledge_domains", []).append({"id": "dom-1", "slug": "global"})
 
 
 class _Keystore:
     def get_secret(self, account):
-        return "sk-test" if "prof-1" in account else None
+        return "sk-test" if "prof-" in account else None
 
 
 _savers = {}
@@ -183,7 +183,7 @@ async def test_resume_denied_never_executes_tool():
 # ---------------------------------------------------------------------------
 def test_granted_tools_auto_seeds_me():
     client = FakeClient()
-    client.tables.setdefault("identities", []).append({"id": "me-1", "slug": "me"})
+    client.tables.setdefault("identities", []).append({"id": "me-1", "user_id": "u1", "slug": "me"})
     tools = granted_tools(client, "u1", "me-1")
     assert {t.key for t in tools} == {"knowledge.recall", "knowledge.remember", "knowledge.forget"}
     grants = client.tables["identity_tool_grants"]
@@ -193,8 +193,8 @@ def test_granted_tools_auto_seeds_me():
 
 def test_grants_are_read_not_reseeded_when_present():
     client = FakeClient()
-    client.tables.setdefault("identities", []).append({"id": "me-1", "slug": "me"})
-    client.tables.setdefault("identity_tool_grants", []).append({"identity_id": "me-1", "tool_key": "knowledge.recall"})
+    client.tables.setdefault("identities", []).append({"id": "me-1", "user_id": "u1", "slug": "me"})
+    client.tables.setdefault("identity_tool_grants", []).append({"identity_id": "me-1", "user_id": "u1", "tool_key": "knowledge.recall"})
     tools = granted_tools(client, "u1", "me-1")
     assert [t.key for t in tools] == ["knowledge.recall"]
     assert len(client.tables["identity_tool_grants"]) == 1
@@ -219,7 +219,7 @@ def test_resolve_chat_model_without_profile_gives_notice():
 def test_load_history_orders_messages():
     client = FakeClient()
     _me_world(client)
-    client.tables.setdefault("conversations", []).append({"id": "conv-1", "channel": "whatsapp", "peer": "u:509"})
+    client.tables.setdefault("conversations", []).append({"id": "conv-1", "user_id": "u1", "channel": "whatsapp", "peer": "u:509"})
     client.tables["messages"] = [
         {"conversation_id": "conv-1", "direction": "inbound", "body": "second", "occurred_at": "2026-11-01T10:02:00Z"},
         {"conversation_id": "conv-1", "direction": "outbound", "body": "reply", "occurred_at": "2026-11-01T10:01:00Z"},
@@ -266,7 +266,7 @@ async def test_handle_inbound_full_approval_loop(monkeypatch, manager, keystore)
     client = FakeClient()
     _me_world(client)
     client.tables.setdefault("conversations", []).append(
-        {"id": "conv-1", "channel": "whatsapp", "peer": "user:509"}
+        {"id": "conv-1", "user_id": "u1", "channel": "whatsapp", "peer": "user:509"}
     )
     client.tables.setdefault("knowledge_edges", []).append({"id": "edge-1", "user_id": "u1", "fact": "diary secret"})
     monkeypatch.setattr(
@@ -373,3 +373,73 @@ async def test_handle_inbound_skips_recall_block_when_nothing_matches(monkeypatc
 
     await wiring.handle_inbound(client, "u1", _envelope("hello there"))
     assert "What you remember" not in captured["system"]
+
+
+# ---------------------------------------------------------------------------
+# /slug routing: messages addressed to a specialist identity
+# ---------------------------------------------------------------------------
+def test_parse_slug():
+    assert wiring.parse_slug("/garden-coach water the beds") == "garden-coach"
+    assert wiring.parse_slug("/Garden-Coach hi") is None  # slugs are lowercase
+    assert wiring.parse_slug("plain text") is None
+    assert wiring.parse_slug("") is None
+
+
+async def test_handle_inbound_routes_slug_to_specialist(monkeypatch, manager, keystore):
+    """The specialist's instructions and its bound model profile drive the turn."""
+    client = FakeClient()
+    _me_world(client)
+    client.tables["identities"].append(
+        {"id": "sp-1", "user_id": "u1", "slug": "garden-coach", "name": "Garden Coach",
+         "kind": "specialist", "status": "active", "model_profile_id": "prof-sp"}
+    )
+    client.tables["model_profiles"].append(
+        {"id": "prof-sp", "user_id": "u1", "purpose": "chat", "provider": "openai_compatible", "model": "garden-model", "api_base": None}
+    )
+    client.tables["identity_instructions"].append(
+        {"identity_id": "sp-1", "version": 1, "is_active": True, "content_md": "You tend the garden."}
+    )
+    captured = {}
+
+    def fake_build(provider, model, api_base, key):
+        captured["model"] = model
+        return StubChatModel(reply="Watered.")
+
+    async def fake_run_turn(model, system_prompt, history, **kw):
+        captured["system"] = system_prompt
+        return {"reply": "Watered.", "interrupt": None}
+
+    monkeypatch.setattr(wiring, "chat_model_for_profile", fake_build)
+    monkeypatch.setattr(wiring, "run_turn", fake_run_turn)
+    monkeypatch.setattr(wiring, "_saver_for", _fake_saver)
+
+    await wiring.handle_inbound(client, "u1", _envelope("/garden-coach water the beds"))
+    assert "You tend the garden." in captured["system"], captured
+    assert captured["model"] == "garden-model"
+    runs = client.tables["agent_runs"]
+    assert runs and runs[-1]["identity_id"] == "sp-1"
+    assert any("Watered." in t for t, _, _ in manager.sent)
+
+
+async def test_handle_inbound_unknown_slug_notifies(monkeypatch, manager, keystore):
+    client = FakeClient()
+    _me_world(client)
+    monkeypatch.setattr(wiring, "_saver_for", _fake_saver)
+
+    await wiring.handle_inbound(client, "u1", _envelope("/nobody hi"))
+    assert any("specialist" in t.lower() and "nobody" in t.lower() for t, _, _ in manager.sent), manager.sent
+    assert client.tables.get("agent_runs", []) == []
+
+
+async def test_handle_inbound_deactivated_slug_notifies(monkeypatch, manager, keystore):
+    client = FakeClient()
+    _me_world(client)
+    client.tables["identities"].append(
+        {"id": "sp-2", "user_id": "u1", "slug": "old-coach", "name": "Old Coach",
+         "kind": "specialist", "status": "deactivated", "model_profile_id": None}
+    )
+    monkeypatch.setattr(wiring, "_saver_for", _fake_saver)
+
+    await wiring.handle_inbound(client, "u1", _envelope("/old-coach hello"))
+    assert any("switched off" in t.lower() for t, _, _ in manager.sent), manager.sent
+    assert client.tables.get("agent_runs", []) == []

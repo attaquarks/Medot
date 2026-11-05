@@ -433,3 +433,45 @@ def test_identity_registry_end_to_end(runtime):
     assert bad_status.status_code == 400
     missing = client.patch("/identities/00000000-0000-0000-0000-000000000000", json={"status": "active"})
     assert missing.status_code == 404
+
+
+def test_engine_slug_routes_to_specialist_end_to_end(runtime, mock_provider):
+    """M2b payoff, for real: '/garden-coach ...' routes the turn to that
+    identity — its instructions and its bound model profile drive the model."""
+    client, _user_id, email, admin, _output = runtime
+    base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
+    saved = client.post(
+        "/providers/profiles",
+        json={"name": "E2E Chat", "purpose": "chat", "provider": "openai_compatible",
+              "model": "mock-large", "api_base": base, "api_key": "sk-e2e"},
+    )
+    assert saved.status_code == 200
+    profile_id = saved.json()["id"]
+
+    created = client.post("/identities", json={
+        "name": "Garden Coach",
+        "instructions_md": "You advise on gardens. Always mention soil.",
+    })
+    assert created.status_code == 200, created.text
+    identity_id = created.json()["id"]
+    bound = client.patch(f"/identities/{identity_id}", json={"model_profile_id": profile_id})
+    assert bound.status_code == 200
+
+    turn = client.post("/engine/test-turn", json={"text": "/garden-coach what should I plant?"})
+    assert turn.status_code == 200, f"engine turn failed: {turn.text[:400]}"
+
+    system = next(m for m in mock_provider.last_body["messages"] if m["role"] == "system")
+    assert "You advise on gardens. Always mention soil." in system["content"], system["content"][:600]
+
+    from supabase import create_client
+
+    as_user = create_client(os.environ["MEDOT_TEST_SUPABASE_URL"], os.environ["MEDOT_TEST_SUPABASE_KEY"])
+    as_user.postgrest.auth(
+        admin.auth.sign_in_with_password({"email": email, "password": "S3cret-Pass!"}).session.access_token
+    )
+    runs = as_user.table("agent_runs").select("status,identity_id").execute().data
+    assert any(r["identity_id"] == identity_id and r["status"] == "succeeded" for r in runs), runs
+
+    unknown = client.post("/engine/test-turn", json={"text": "/nobody hi"})
+    assert unknown.status_code == 200
+    assert "specialist" in unknown.json()["reply"].lower(), unknown.json()

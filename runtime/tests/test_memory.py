@@ -46,7 +46,7 @@ def test_extraction_profile_row_present_and_absent():
     client = FakeClient()
     assert mem.extraction_profile_row(client, "u1") is None
     client.tables.setdefault("model_profiles", []).append(
-        {"id": "prof-x", "purpose": "extraction", "provider": "openai_compatible", "model": "m", "api_base": None}
+        {"id": "prof-x", "user_id": "u1", "purpose": "extraction", "provider": "openai_compatible", "model": "m", "api_base": None}
     )
     assert mem.extraction_profile_row(client, "u1")["id"] == "prof-x"
 
@@ -59,7 +59,7 @@ async def test_extract_facts_parses_and_saves(monkeypatch):
     client = FakeClient()
     client.tables.setdefault("knowledge_domains", []).append({"id": "dom-1", "slug": "global"})
     client.tables.setdefault("model_profiles", []).append(
-        {"id": "prof-x", "purpose": "extraction", "provider": "openai_compatible", "model": "m", "api_base": None}
+        {"id": "prof-x", "user_id": "u1", "purpose": "extraction", "provider": "openai_compatible", "model": "m", "api_base": None}
     )
 
     class _Keystore:
@@ -91,7 +91,7 @@ async def test_extract_facts_parses_and_saves(monkeypatch):
 async def test_extract_facts_survives_garbage(monkeypatch):
     client = FakeClient()
     client.tables.setdefault("model_profiles", []).append(
-        {"id": "prof-x", "purpose": "extraction", "provider": "openai_compatible", "model": "m", "api_base": None}
+        {"id": "prof-x", "user_id": "u1", "purpose": "extraction", "provider": "openai_compatible", "model": "m", "api_base": None}
     )
 
     class _Keystore:

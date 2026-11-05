@@ -61,7 +61,7 @@ class FakeQuery:
                     row.update(self._pending)
             self._last = [dict(self._pending)]
         else:
-            self._result = [r for r in self._rows if r.get(col) == val]
+            self._result = [r for r in self._result if r.get(col) == val]
         return self
 
     def ilike(self, col, pattern):

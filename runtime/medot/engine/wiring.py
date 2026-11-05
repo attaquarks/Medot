@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -63,8 +64,21 @@ async def _saver_for(user_id: str) -> Any:
         return saver
 
 
-def chat_profile_row(client, user_id: str) -> dict | None:
-    """The user's chat-purpose model profile (newest first)."""
+def chat_profile_row(client, user_id: str, profile_id: str | None = None) -> dict | None:
+    """A specific model profile, or the user's newest chat-purpose one."""
+    if profile_id:
+        rows = (
+            client.table("model_profiles")
+            .select("id,name,provider,model,api_base")
+            .eq("user_id", user_id)
+            .eq("id", profile_id)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if rows:
+            return rows[0]
     rows = (
         client.table("model_profiles")
         .select("id,name,provider,model,api_base")
@@ -93,11 +107,8 @@ def me_identity_id(client, user_id: str) -> str | None:
     return rows[0]["id"] if rows else None
 
 
-def me_instructions(client, user_id: str) -> str:
-    """Me.'s active instruction document (identity_instructions, newest)."""
-    identity_id = me_identity_id(client, user_id)
-    if not identity_id:
-        return "You are Me., the user's personal companion. Be warm, concise and honest."
+def identity_instructions(client, user_id: str, identity_id: str, fallback: str) -> str:
+    """The identity's active instruction document (identity_instructions)."""
     rows = (
         client.table("identity_instructions")
         .select("content_md")
@@ -109,7 +120,17 @@ def me_instructions(client, user_id: str) -> str:
         .data
         or []
     )
-    return rows[0]["content_md"] if rows else "You are Me., the user's personal companion."
+    return rows[0]["content_md"] if rows else fallback
+
+
+def me_instructions(client, user_id: str) -> str:
+    """Me.'s active instruction document (identity_instructions, newest)."""
+    identity_id = me_identity_id(client, user_id)
+    if not identity_id:
+        return "You are Me., the user's personal companion. Be warm, concise and honest."
+    return identity_instructions(
+        client, user_id, identity_id, "You are Me., the user's personal companion."
+    )
 
 
 def load_history(client, user_id: str, peer: str) -> list:
@@ -165,9 +186,9 @@ def persist_outbound(client, user_id: str, peer: str, transport: str, text: str)
     ).execute()
 
 
-def resolve_chat_model(client, user_id: str):
+def resolve_chat_model(client, user_id: str, profile_id: str | None = None):
     """(model instance, None) or (None, reason) when no usable chat profile."""
-    profile = chat_profile_row(client, user_id)
+    profile = chat_profile_row(client, user_id, profile_id)
     if not profile:
         return None, NO_MODEL_REPLY
     key = load_key(get_keystore(), user_id, profile["id"])
@@ -291,22 +312,76 @@ async def _deliver(manager, transport: str, peer: str, text: str) -> None:
     await manager.send(text, transport_name=transport, to=peer)
 
 
+def identity_by_slug(client, user_id: str, slug: str) -> dict | None:
+    """The identity this user addressed by slug, or None."""
+    rows = (
+        client.table("identities")
+        .select("id,name,slug,status,model_profile_id")
+        .eq("user_id", user_id)
+        .eq("slug", slug)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    return rows[0] if rows else None
+
+
+def parse_slug(text: str) -> str | None:
+    """'/garden-coach water the beds' -> 'garden-coach'; plain text -> None."""
+    match = re.match(r"^/([a-z0-9][a-z0-9-]*)\b", (text or "").strip())
+    return match.group(1) if match else None
+
+
 async def _run_inbound_flow(client, user_id: str, peer: str, transport: str, text: str) -> None:
-    """The whole Me. flow: approvals first, then a fresh agent turn."""
-    model, _notice = await asyncio.to_thread(resolve_chat_model, client, user_id)
+    """The whole flow: /slug routes to a specialist, else Me.; approvals
+    first, then a fresh agent turn."""
+    from ..whatsapp import manager as wa_manager
+
+    # 0. addressing: /slug picks the identity this turn belongs to
+    slug = parse_slug(text)
+    identity_row = None
+    if slug:
+        identity_row = await asyncio.to_thread(identity_by_slug, client, user_id, slug)
+        if identity_row is None:
+            await asyncio.to_thread(
+                persist_outbound, client, user_id, peer, transport,
+                f"I don't have a specialist called \"{slug}\".",
+            )
+            await _deliver(
+                wa_manager.get_manager(), transport, peer,
+                f"I don't have a specialist called \"{slug}\".",
+            )
+            return
+        if identity_row.get("status") != "active":
+            notice = f"\"{identity_row['name']}\" is switched off. Turn it back on in Medot Desktop."
+            await asyncio.to_thread(persist_outbound, client, user_id, peer, transport, notice)
+            await _deliver(wa_manager.get_manager(), transport, peer, notice)
+            return
+
+    model, _notice = await asyncio.to_thread(
+        resolve_chat_model, client, user_id,
+        identity_row["model_profile_id"] if identity_row else None,
+    )
     if model is None:
         if peer not in _no_model_notified:
             _no_model_notified.add(peer)
             await _send_no_model(client, user_id, peer, transport)
         return
-    tools = await asyncio.to_thread(_tools_for_me, client, user_id)
-    instructions = await asyncio.to_thread(me_instructions, client, user_id)
+    if identity_row:
+        identity_id = identity_row["id"]
+        tools = await asyncio.to_thread(granted_tools, client, user_id, identity_id)
+        instructions = await asyncio.to_thread(
+            identity_instructions, client, user_id, identity_id, f"You are {identity_row['name']}."
+        )
+    else:
+        identity_id = await asyncio.to_thread(me_identity_id, client, user_id)
+        tools = await asyncio.to_thread(_tools_for_me, client, user_id)
+        instructions = await asyncio.to_thread(me_instructions, client, user_id)
     recalled = await asyncio.to_thread(retrieve_knowledge, client, user_id, text)
     if recalled:
         instructions = f"{instructions}\n\n{recalled}"
-    identity_id = await asyncio.to_thread(me_identity_id, client, user_id)
     saver = await _saver_for(user_id)
-    from ..whatsapp import manager as wa_manager
 
     # 1. a pending approval turns this message into a decision
     pending = await asyncio.to_thread(_pending_approval, client, user_id, peer)
