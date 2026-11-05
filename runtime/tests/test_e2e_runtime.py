@@ -488,3 +488,41 @@ def test_engine_slug_routes_to_specialist_end_to_end(runtime, mock_provider):
     unknown = client.post("/engine/test-turn", json={"text": "/nobody hi"})
     assert unknown.status_code == 200
     assert "specialist" in unknown.json()["reply"].lower(), unknown.json()
+
+
+def test_console_approve_decide_end_to_end(runtime, mock_provider):
+    """The console's Approve button: a pending approval decided through
+    POST /approvals/{id}/decide resumes the same run, like a WhatsApp YES."""
+    client, _user_id, email, admin, _output = runtime
+
+    turn = client.post("/engine/test-turn", json={"text": "please forget the thing"})
+    assert turn.status_code == 200, f"engine turn failed: {turn.text[:400]}"
+    assert "YES" in turn.json()["reply"], turn.json()
+
+    listing = client.get("/approvals")
+    assert listing.status_code == 200, listing.text
+    pending = listing.json()["pending"]
+    assert len(pending) == 1 and pending[0]["action"] == "forget_fact", pending
+
+    decided = client.post(f"/approvals/{pending[0]['id']}/decide", json={"approved": True})
+    assert decided.status_code == 200, decided.text
+    assert "forgot" in decided.json()["reply"].lower(), decided.json()
+
+    decided_again = client.post(f"/approvals/{pending[0]['id']}/decide", json={"approved": False})
+    assert decided_again.status_code == 409, decided_again.text
+
+    feed = client.get("/activity")
+    assert feed.status_code == 200, feed.text
+    events = feed.json()["events"]
+    assert any(e["event"] == "approval.decided" for e in events), events
+
+    from supabase import create_client
+
+    as_user = create_client(os.environ["MEDOT_TEST_SUPABASE_URL"], os.environ["MEDOT_TEST_SUPABASE_KEY"])
+    as_user.postgrest.auth(
+        admin.auth.sign_in_with_password({"email": email, "password": "S3cret-Pass!"}).session.access_token
+    )
+    statuses = as_user.table("approvals").select("status").execute().data
+    assert any(s["status"] == "approved" for s in statuses), statuses
+    runs = as_user.table("agent_runs").select("status").execute().data
+    assert any(r["status"] == "succeeded" for r in runs), runs

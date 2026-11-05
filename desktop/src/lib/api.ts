@@ -54,3 +54,36 @@ export type WaStatus = {
 };
 
 export type Session = { authenticated: boolean; user_id?: string; expires_at?: string | null };
+
+export type Identity = {
+  id: string;
+  name: string;
+  slug: string;
+  kind: string;
+  status: string;
+  description: string;
+  icon: string | null;
+  model_profile_id: string | null;
+  instructions_md: string;
+  instructions_version: number | null;
+};
+
+export type Approval = {
+  id: string;
+  action: string;
+  summary: string;
+  status: string;
+  channel: string;
+  created_at: string | null;
+  decided_at: string | null;
+};
+
+export type ActivityEvent = {
+  id: string;
+  event: string;
+  detail: Record<string, unknown>;
+  created_at: string | null;
+  identity_id: string | null;
+};
+
+export type ModelProfileLite = { id: string; name: string; purpose: string; model: string };

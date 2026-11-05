@@ -72,6 +72,7 @@ precision, not theme.
 
 Built and verified in `desktop/src/styles/console.css` (single stylesheet,
 tokens first), `desktop/src/App.tsx`, `screens-onboarding.tsx`,
-`screens-console.tsx`, dev-only harness `desktop/preview.html`. The owner
+`screens-console.tsx`, `screens-identities.tsx`, `screens-activity.tsx`,
+dev-only harness `desktop/preview.html`. The owner
 replaced the previous "Day-Runner" themed world on 2026-11-03 with this
 standard design; captures in `.impeccable/review/`.

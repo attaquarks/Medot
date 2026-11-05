@@ -443,3 +443,42 @@ async def test_handle_inbound_deactivated_slug_notifies(monkeypatch, manager, ke
     await wiring.handle_inbound(client, "u1", _envelope("/old-coach hello"))
     assert any("switched off" in t.lower() for t, _, _ in manager.sent), manager.sent
     assert client.tables.get("agent_runs", []) == []
+
+
+async def test_apply_approval_decision_resumes_with_identity_tools(monkeypatch, manager, keystore):
+    """The console decide path: same resume, proposing identity's tools, no transport send."""
+    client = FakeClient()
+    _me_world(client)
+    client.tables.setdefault("agent_runs", []).append({"id": "run-1", "user_id": "u1", "status": "awaiting_approval"})
+    client.tables.setdefault("approvals", []).append({
+        "id": "appr-1", "user_id": "u1", "run_id": "run-1", "identity_id": "me-1",
+        "action": "forget_fact", "summary": "forget: diary", "status": "pending",
+        "payload": {"thread_id": "t-1", "peer": "user:509"},
+    })
+    resumed = {}
+
+    async def fake_resume(model, system_prompt, *, thread_id, checkpointer, tools, client, user_id, decision):
+        resumed["tools"] = tools
+        resumed["thread_id"] = thread_id
+        resumed["decision"] = decision
+        return "Done — forgot it."
+
+    monkeypatch.setattr(wiring, "resume_turn", fake_resume)
+    monkeypatch.setattr(wiring, "_saver_for", _fake_saver)
+
+    reply = await wiring.apply_approval_decision(
+        client, "u1", client.tables["approvals"][0], True, transport="desktop", peer="user:509"
+    )
+    assert reply == "Done — forgot it."
+    assert resumed["thread_id"] == "t-1" and resumed["decision"] == {"approved": True}
+    # granted for the proposing identity (auto-seeded), not empty
+    assert len(resumed["tools"]) == 3
+    approval = client.tables["approvals"][0]
+    assert approval["status"] == "approved" and approval["decided_at"]
+    runs = client.tables["agent_runs"]
+    assert any(r["id"] == "run-1" and r["status"] == "succeeded" for r in runs)
+    events = client.tables["activity_events"]
+    assert events and events[-1]["event"] == "approval.decided"
+    # persisted to the conversation (desktop reads it from DB)
+    assert any(m["body"] == "Done — forgot it." for m in client.tables["messages"])
+    assert manager.sent == []  # desktop transport: no WhatsApp send

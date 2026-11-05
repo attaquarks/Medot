@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, type Session, type WaStatus } from "./lib/api";
 
+export { Identities } from "./screens-identities";
+
 type ScreenProps = { wa: WaStatus | null; user: Session | null };
 
 function fmtWhen(iso: string | null | undefined): string {
@@ -89,38 +91,6 @@ export function Overview({ wa, onConnect, go }: { wa: WaStatus | null; onConnect
               <span className="what">Full activity timeline arrives with the runtime engine</span>
               <span className="when">soon</span>
             </div>
-          </div>
-        </section>
-      </div>
-    </>
-  );
-}
-
-export function Identities({ wa }: ScreenProps) {
-  return (
-    <>
-      <div className="page-heading">
-        <h1>Identities</h1>
-        <p className="subline">
-          Me. is your permanent companion; specialists are its delegations.
-        </p>
-      </div>
-      <div className="entries">
-        <section className="entry">
-          <div className="entry-title"><span className="status-dot" aria-hidden="true" />Me. — your companion</div>
-          <div className="entry-sub">Coordinator of your spaces. Never replaced — it delegates.</div>
-          <div className="status-lines">
-            <span>Active{wa?.any_connected ? " and listening on WhatsApp" : ""}.</span>
-          </div>
-        </section>
-      </div>
-      <div className="section-label">Specialist spaces</div>
-      <div className="entries" style={{ marginTop: 6 }}>
-        <section className="entry">
-          <div className="entry-title">No specialist spaces yet</div>
-          <div className="entry-sub">
-            When an area of your life grows — health, studies, a business —
-            Me. will suggest starting a space for it. You always confirm first.
           </div>
         </section>
       </div>

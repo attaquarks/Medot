@@ -51,6 +51,14 @@ Activity        runs, approvals, fact changes timeline
 Settings        profile, timezone, privacy, backups, diagnostics
 ```
 
+Implementation status (2026-11-06): **Overview, Identities, AI Providers,
+Activity and Settings are real** (Identities: create specialists, versioned
+instructions editor, activate/deactivate, model-profile binding; Activity:
+pending approvals with Approve/Deny wired to `POST /approvals/{id}/decide`,
+recent decisions, event feed from `GET /activity`). Knowledge, Connectors and
+Browser remain placeholders pending their milestones; the full tabbed
+per-identity detail pages (below) arrive with those surfaces.
+
 ## 3. Identity detail pages (per identity, including Me.)
 
 | Tab | Content |
@@ -64,6 +72,12 @@ Settings        profile, timezone, privacy, backups, diagnostics
 | Model | Model profile (provider, model, parameters, fallback), per-purpose overrides |
 | Permissions | Who can invoke it (Me. background invocation on/off), approval policy |
 | Activity | Run history, pending approvals, messages it contributed to |
+
+Today's console implements the M2b/M2c slice of this table inline on the
+Identities screen (no tabs yet): Overview = the row card (name, /slug,
+status, model profile), Instructions = the versioned editor, Model = the
+profile select at creation. The remaining tabs (Knowledge, Memory, Tools,
+Connectors, Permissions, Activity) land with their milestones.
 
 Language rule: the UI says **spaces/areas/knowledge**, never "nodes/edges/
 embeddings/group_id". Facts render with their dates ("Weight 74.2 kg — recorded

@@ -424,6 +424,102 @@ async def identities_save_instructions(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+# --------------------------- Approvals + activity (console) ------------------
+
+class ApprovalDecisionBody(BaseModel):
+    approved: bool
+
+
+@app.get("/approvals")
+async def approvals_list(_: None = Depends(require_token)) -> dict:
+    """Pending approvals, then the recently decided ones (console Activity)."""
+    user_id, client = await asyncio.to_thread(_user_client)
+
+    def _load() -> dict:
+        pending = (
+            client.table("approvals")
+            .select("id,action,summary,status,channel,created_at,decided_at")
+            .eq("user_id", user_id)
+            .eq("status", "pending")
+            .order("id", desc=True)
+            .execute()
+            .data
+            or []
+        )
+        recent = (
+            client.table("approvals")
+            .select("id,action,summary,status,channel,created_at,decided_at")
+            .eq("user_id", user_id)
+            .in_("status", ["approved", "denied", "expired"])
+            .order("id", desc=True)
+            .limit(20)
+            .execute()
+            .data
+            or []
+        )
+        return {"pending": pending, "recent": recent}
+
+    return await asyncio.to_thread(_load)
+
+
+@app.post("/approvals/{approval_id}/decide")
+async def approvals_decide(
+    approval_id: str, body: ApprovalDecisionBody, _: None = Depends(require_token)
+) -> dict:
+    """The console's Approve/Deny: resumes the interrupted run, like a
+    WhatsApp YES/NO would."""
+    from ..engine import wiring as engine_wiring
+
+    user_id, client = await asyncio.to_thread(_user_client)
+
+    def _row() -> dict | None:
+        rows = (
+            client.table("approvals")
+            .select("id,run_id,identity_id,action,summary,payload,status")
+            .eq("id", approval_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        return rows[0] if rows else None
+
+    pending = await asyncio.to_thread(_row)
+    if not pending:
+        raise HTTPException(status_code=404, detail="no such approval")
+    if pending["status"] != "pending":
+        raise HTTPException(status_code=409, detail=f"already {pending['status']}")
+    peer = (pending.get("payload") or {}).get("peer", "desktop")
+    try:
+        reply = await engine_wiring.apply_approval_decision(
+            client, user_id, pending, body.approved, transport="desktop", peer=peer,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "reply": reply}
+
+
+@app.get("/activity")
+async def activity_list(_: None = Depends(require_token)) -> dict:
+    user_id, client = await asyncio.to_thread(_user_client)
+
+    def _load() -> dict:
+        rows = (
+            client.table("activity_events")
+            .select("id,event,detail,created_at,identity_id")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(50)
+            .execute()
+            .data
+            or []
+        )
+        return {"events": rows}
+
+    return await asyncio.to_thread(_load)
+
+
 # --------------------------- Engine (Me. thinking) ---------------------------
 
 class TestTurnBody(BaseModel):

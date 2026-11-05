@@ -312,6 +312,42 @@ async def _deliver(manager, transport: str, peer: str, text: str) -> None:
     await manager.send(text, transport_name=transport, to=peer)
 
 
+async def apply_approval_decision(
+    client, user_id: str, pending: dict, approved: bool, *, transport: str, peer: str
+) -> str:
+    """Finish an interrupted turn with YES/NO — shared by WhatsApp replies and
+    the console's Approve/Deny buttons. Resumes the exact checkpointed thread
+    with the proposing identity's tools."""
+    model, _notice = await asyncio.to_thread(resolve_chat_model, client, user_id)
+    if model is None:
+        raise ValueError("no model profile is available to finish this action")
+    identity_id = pending.get("identity_id") or await asyncio.to_thread(me_identity_id, client, user_id)
+    if identity_id:
+        tools = await asyncio.to_thread(granted_tools, client, user_id, identity_id)
+        instructions = await asyncio.to_thread(
+            identity_instructions, client, user_id, identity_id,
+            "You are Me., the user's personal companion.",
+        )
+    else:
+        tools = []
+        instructions = "You are Me., the user's personal companion."
+    saver = await _saver_for(user_id)
+    thread_id = (pending.get("payload") or {}).get("thread_id", "")
+    reply = await resume_turn(
+        model, instructions,
+        thread_id=thread_id, checkpointer=saver, tools=tools,
+        client=client, user_id=user_id, decision={"approved": approved},
+    )
+    await asyncio.to_thread(_decide, client, user_id, pending["id"], approved)
+    await asyncio.to_thread(_finish_agent_run, client, pending.get("run_id"), "succeeded")
+    await asyncio.to_thread(
+        _log_activity, client, user_id, identity_id, "approval.decided",
+        {"approval": pending["id"], "approved": approved, "action": pending.get("action")},
+    )
+    await asyncio.to_thread(persist_outbound, client, user_id, peer, transport, reply)
+    return reply
+
+
 def identity_by_slug(client, user_id: str, slug: str) -> dict | None:
     """The identity this user addressed by slug, or None."""
     rows = (
@@ -393,19 +429,9 @@ async def _run_inbound_flow(client, user_id: str, peer: str, transport: str, tex
                 "Please reply YES to allow it, or NO to keep everything.",
             )
             return
-        thread_id = (pending.get("payload") or {}).get("thread_id", "")
-        reply = await resume_turn(
-            model, instructions,
-            thread_id=thread_id, checkpointer=saver, tools=tools,
-            client=client, user_id=user_id, decision={"approved": decision},
+        reply = await apply_approval_decision(
+            client, user_id, pending, decision, transport=transport, peer=peer,
         )
-        await asyncio.to_thread(_decide, client, user_id, pending["id"], decision)
-        await asyncio.to_thread(_finish_agent_run, client, pending.get("run_id"), "succeeded")
-        await asyncio.to_thread(
-            _log_activity, client, user_id, identity_id, "approval.decided",
-            {"approval": pending["id"], "approved": decision, "action": pending.get("action")},
-        )
-        await asyncio.to_thread(persist_outbound, client, user_id, peer, transport, reply)
         await _deliver(wa_manager.get_manager(), transport, peer, reply)
         asyncio.create_task(remember_exchange(client, user_id, text, reply))
         return

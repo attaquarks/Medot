@@ -130,6 +130,12 @@ tool requires approval → HumanInTheLoopMiddleware / interrupt(payload)
 Expired approvals resume as `denied` automatically. Checkpoint data is execution
 state only; Supabase remains canonical for identity/conversation/approval records.
 
+The desktop console decides through the same gate: `POST /approvals/{id}/decide`
+runs the identical resume (`wiring.apply_approval_decision`, shared with the
+WhatsApp YES/NO path — same thread, proposing identity's tools, exactly-once
+execution, activity event). `GET /approvals` lists pending + recent decisions;
+`GET /activity` serves the event feed.
+
 ## 9. Checkpointer thread IDs
 
 `thread_id = f"u:{user_id}:c:{conversation_id}:r:{run_id}"` (≤255 chars).
