@@ -67,6 +67,7 @@ class _MockProvider(ThreadingHTTPServer):
                     outer.last_completion = dict(self.headers)
                     length = int(self.headers.get("Content-Length") or 0)
                     body = json.loads(self.rfile.read(length) or b"{}") if length else {}
+                    outer.last_body = body
                     msgs = body.get("messages", [])
                     asked_to_forget = any(
                         "forget" in str(m.get("content", "")).lower() for m in msgs
@@ -364,3 +365,38 @@ def test_engine_tool_approval_loop_end_to_end(runtime, mock_provider):
     assert approvals_after[0]["status"] == "approved"
     runs = as_user.table("agent_runs").select("status").execute().data
     assert any(r["status"] == "succeeded" for r in runs)
+
+
+def test_engine_retrieves_knowledge_into_prompt(runtime, mock_provider):
+    """M3b, for real: a fact remembered about the user's life reaches the
+    model's system prompt on the next turn (runtime → RLS query → prompt)."""
+    client, user_id, email, admin, _output = runtime
+    saved = client.post(
+        "/providers/profiles",
+        json={"name": "E2E Chat", "purpose": "chat", "provider": "openai_compatible",
+              "model": "mock-large", "api_base": f"http://127.0.0.1:{mock_provider.server_address[1]}/v1",
+              "api_key": "sk-e2e"},
+    )
+    assert saved.status_code == 200
+
+    from supabase import create_client
+
+    as_user = create_client(os.environ["MEDOT_TEST_SUPABASE_URL"], os.environ["MEDOT_TEST_SUPABASE_KEY"])
+    as_user.postgrest.auth(
+        admin.auth.sign_in_with_password({"email": email, "password": "S3cret-Pass!"}).session.access_token
+    )
+    node = (
+        as_user.table("knowledge_nodes")
+        .insert({"user_id": user_id, "node_type": "entity", "name": "Priya",
+                 "summary": "the user's sister, allergic to peanuts"})
+        .execute()
+        .data
+    )
+    assert node, "knowledge node insert failed (RLS?)"
+
+    turn = client.post("/engine/test-turn", json={"text": "What can I cook for Priya?"})
+    assert turn.status_code == 200, f"engine turn failed: {turn.text[:400]}"
+
+    system = next(m for m in mock_provider.last_body["messages"] if m["role"] == "system")
+    assert "What you remember that may be relevant here:" in system["content"], system["content"][:600]
+    assert "Priya — the user's sister, allergic to peanuts" in system["content"], system["content"][:600]

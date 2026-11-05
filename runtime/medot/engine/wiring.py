@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from ..localstore import paths
 from ..localstore.keystore import get_keystore
+from ..memory.retrieval import retrieve_knowledge
 from ..providers.chat_model import chat_model_for_profile
 from ..providers.profiles import load_key
 from ..tools.registry import granted_tools
@@ -300,6 +301,9 @@ async def _run_inbound_flow(client, user_id: str, peer: str, transport: str, tex
         return
     tools = await asyncio.to_thread(_tools_for_me, client, user_id)
     instructions = await asyncio.to_thread(me_instructions, client, user_id)
+    recalled = await asyncio.to_thread(retrieve_knowledge, client, user_id, text)
+    if recalled:
+        instructions = f"{instructions}\n\n{recalled}"
     identity_id = await asyncio.to_thread(me_identity_id, client, user_id)
     saver = await _saver_for(user_id)
     from ..whatsapp import manager as wa_manager

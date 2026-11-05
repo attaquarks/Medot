@@ -65,7 +65,18 @@ class FakeQuery:
 
     def ilike(self, col, pattern):
         needle = pattern.strip("%").lower()
-        self._result = [r for r in self._rows if needle in str(r.get(col, "")).lower()]
+        self._result = [r for r in self._result if needle in str(r.get(col, "")).lower()]
+        return self
+
+    def or_(self, conditions):
+        # comma-separated col.op.pattern conditions; only ilike is used by tests
+        def match(row, cond):
+            col, _op, pattern = cond.split(".", 2)
+            needle = pattern.strip("%").lower()
+            return needle in str(row.get(col, "")).lower()
+
+        conds = [c.strip() for c in conditions.split(",") if c.strip()]
+        self._result = [r for r in self._result if any(match(r, c) for c in conds)]
         return self
 
     def in_(self, col, vals):

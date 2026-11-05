@@ -114,3 +114,43 @@ async def test_extract_facts_survives_garbage(monkeypatch):
 def test_prompt_bounds_extraction_output():
     assert '"facts": []' in mem.EXTRACTION_PROMPT
     assert mem.EXTRACTION_MAX_TOKENS == 400
+
+
+# ---------------------------------------------------------------------------
+# retrieval (M3b): relevant facts pulled into the prompt before each turn
+# ---------------------------------------------------------------------------
+def test_keywords_picks_content_words_in_order():
+    from medot.memory.retrieval import keywords
+
+    assert keywords("What should I cook for Priya tonight?") == ["cook", "priya", "tonight"]
+    assert keywords("um er hi") == []
+    assert keywords("walking walking marathon") == ["walking", "marathon"]
+    assert len(keywords(" ".join(f"word{i}" for i in range(30)))) == 8
+
+
+def test_retrieve_knowledge_formats_matching_facts():
+    from medot.memory.retrieval import retrieve_knowledge
+
+    client = FakeClient()
+    client.tables["knowledge_nodes"] = [
+        {"user_id": "u1", "name": "Priya", "summary": "the user's sister"},
+        {"user_id": "u2", "name": "Priya", "summary": "someone else"},  # other user, RLS
+    ]
+    client.tables["knowledge_edges"] = [
+        {"user_id": "u1", "fact": "Priya is allergic to peanuts"},
+    ]
+    block = retrieve_knowledge(client, "u1", "what can I cook for Priya?")
+    assert "What you remember" in block
+    assert "- Priya — the user's sister" in block
+    assert "- Priya is allergic to peanuts" in block
+    # the other user's node is only matched when the query hits; summary line must be ours
+    assert "someone else" not in block
+
+
+def test_retrieve_knowledge_empty_when_nothing_matches():
+    from medot.memory.retrieval import retrieve_knowledge
+
+    client = FakeClient()
+    client.tables["knowledge_nodes"] = [{"user_id": "u1", "name": "Priya", "summary": ""}]
+    assert retrieve_knowledge(client, "u1", "tell me about the weather") == ""
+    assert retrieve_knowledge(client, "u1", "hi") == ""

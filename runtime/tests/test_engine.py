@@ -268,7 +268,7 @@ async def test_handle_inbound_full_approval_loop(monkeypatch, manager, keystore)
     client.tables.setdefault("conversations", []).append(
         {"id": "conv-1", "channel": "whatsapp", "peer": "user:509"}
     )
-    client.tables.setdefault("knowledge_edges", []).append({"id": "edge-1", "fact": "diary secret"})
+    client.tables.setdefault("knowledge_edges", []).append({"id": "edge-1", "user_id": "u1", "fact": "diary secret"})
     monkeypatch.setattr(
         wiring, "chat_model_for_profile",
         lambda *a: StubChatModel(
@@ -298,7 +298,7 @@ async def test_handle_inbound_full_approval_loop(monkeypatch, manager, keystore)
 async def test_handle_inbound_denial_keeps_facts(monkeypatch, manager, keystore):
     client = FakeClient()
     _me_world(client)
-    client.tables.setdefault("knowledge_edges", []).append({"id": "edge-1", "fact": "diary secret"})
+    client.tables.setdefault("knowledge_edges", []).append({"id": "edge-1", "user_id": "u1", "fact": "diary secret"})
     monkeypatch.setattr(
         wiring, "chat_model_for_profile",
         lambda *a: StubChatModel(
@@ -335,3 +335,41 @@ async def test_handle_inbound_without_profile_notifies_once(monkeypatch, manager
     await wiring.handle_inbound(FakeClient(), "u1", _envelope("hi"))
     await wiring.handle_inbound(FakeClient(), "u1", _envelope("hi again"))
     assert manager.sent.count((wiring.NO_MODEL_REPLY, "agent_platform", "user:509")) == 1
+
+
+async def test_handle_inbound_retrieves_knowledge_into_prompt(monkeypatch, manager, keystore):
+    """M3b: remembered facts about the message's topic reach the model prompt."""
+    client = FakeClient()
+    _me_world(client)
+    client.tables["knowledge_edges"] = [
+        {"user_id": "u1", "fact": "Priya is allergic to peanuts"},
+    ]
+    captured = {}
+
+    async def fake_run_turn(model, system_prompt, history, **kw):
+        captured["system"] = system_prompt
+        return {"reply": "Got it.", "interrupt": None}
+
+    monkeypatch.setattr(wiring, "run_turn", fake_run_turn)
+    monkeypatch.setattr(wiring, "_saver_for", _fake_saver)
+
+    await wiring.handle_inbound(client, "u1", _envelope("what can I cook for Priya?"))
+    assert "What you remember that may be relevant here:" in captured["system"]
+    assert "Priya is allergic to peanuts" in captured["system"]
+    assert "You are Me. Be kind." in captured["system"]
+
+
+async def test_handle_inbound_skips_recall_block_when_nothing_matches(monkeypatch, manager, keystore):
+    client = FakeClient()
+    _me_world(client)
+    captured = {}
+
+    async def fake_run_turn(model, system_prompt, history, **kw):
+        captured["system"] = system_prompt
+        return {"reply": "Hi.", "interrupt": None}
+
+    monkeypatch.setattr(wiring, "run_turn", fake_run_turn)
+    monkeypatch.setattr(wiring, "_saver_for", _fake_saver)
+
+    await wiring.handle_inbound(client, "u1", _envelope("hello there"))
+    assert "What you remember" not in captured["system"]
