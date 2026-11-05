@@ -25,6 +25,7 @@ class FakeQuery:
         stored.setdefault("id", f"row-{len(self._rows) + 1}")
         self._rows.append(stored)
         self._last = [dict(stored)]
+        self._did_insert = True
         return self
 
     def upsert(self, row, on_conflict=None):
@@ -102,6 +103,8 @@ class FakeQuery:
             self._rows.append(stored)
             self._last = [dict(stored)]
             return self._wrap([dict(stored)])
+        if getattr(self, "_did_insert", False):
+            return self._wrap(list(self._last or []))
         if self._pending is not None:
             self._pending = None
             return self._wrap(self._last or [])

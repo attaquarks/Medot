@@ -334,6 +334,95 @@ async def providers_verify(profile_id: str, _: None = Depends(require_token)) ->
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+# --------------------------- Identity registry (M2b) -------------------------
+
+class IdentityCreateBody(BaseModel):
+    name: str
+    instructions_md: str
+    description: str = ""
+    icon: str | None = None
+    model_profile_id: str | None = None
+
+
+class IdentityUpdateBody(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    icon: str | None = None
+    status: str | None = None
+    model_profile_id: str | None = None
+
+
+class IdentityInstructionsBody(BaseModel):
+    content_md: str
+
+
+@app.get("/identities")
+async def identities_list(_: None = Depends(require_token)) -> dict:
+    from ..identities import registry as identities_mod
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    rows = await asyncio.to_thread(identities_mod.list_identities, client, user_id)
+    return {"identities": rows}
+
+
+@app.post("/identities")
+async def identities_create(body: IdentityCreateBody, _: None = Depends(require_token)) -> dict:
+    from ..identities import registry as identities_mod
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    try:
+        return await asyncio.to_thread(
+            identities_mod.create_identity,
+            client,
+            user_id,
+            name=body.name,
+            instructions_md=body.instructions_md,
+            description=body.description,
+            icon=body.icon,
+            model_profile_id=body.model_profile_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.patch("/identities/{identity_id}")
+async def identities_update(identity_id: str, body: IdentityUpdateBody, _: None = Depends(require_token)) -> dict:
+    from ..identities import registry as identities_mod
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    try:
+        updated = await asyncio.to_thread(
+            identities_mod.update_identity,
+            client,
+            user_id,
+            identity_id,
+            name=body.name,
+            description=body.description,
+            icon=body.icon,
+            status=body.status,
+            model_profile_id=body.model_profile_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not updated:
+        raise HTTPException(status_code=404, detail="no such identity")
+    return updated
+
+
+@app.put("/identities/{identity_id}/instructions")
+async def identities_save_instructions(
+    identity_id: str, body: IdentityInstructionsBody, _: None = Depends(require_token)
+) -> dict:
+    """Saving instructions creates a new active version; the old one is kept."""
+    from ..identities import registry as identities_mod
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    try:
+        return await asyncio.to_thread(
+            identities_mod.save_instructions, client, user_id, identity_id, body.content_md
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 # --------------------------- Engine (Me. thinking) ---------------------------
 

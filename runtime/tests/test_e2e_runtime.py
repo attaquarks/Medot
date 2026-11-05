@@ -400,3 +400,36 @@ def test_engine_retrieves_knowledge_into_prompt(runtime, mock_provider):
     system = next(m for m in mock_provider.last_body["messages"] if m["role"] == "system")
     assert "What you remember that may be relevant here:" in system["content"], system["content"][:600]
     assert "Priya — the user's sister, allergic to peanuts" in system["content"], system["content"][:600]
+
+
+def test_identity_registry_end_to_end(runtime):
+    """M2b, for real: create a specialist, list (Me. seeded by the DB trigger),
+    save a new instruction version, deactivate — all through the runtime API."""
+    client, _user_id, _email, _admin, _output = runtime
+    created = client.post("/identities", json={
+        "name": "Garden Coach",
+        "instructions_md": "You help with the garden. Be practical.",
+        "description": "plants and beds",
+    })
+    assert created.status_code == 200, created.text
+    identity = created.json()
+    assert identity["slug"] == "garden-coach"
+    assert identity["instructions_version"] == 1
+
+    listing = client.get("/identities")
+    assert listing.status_code == 200
+    ids = {i["slug"]: i for i in listing.json()["identities"]}
+    assert "me" in ids, "the signup trigger must have seeded Me."
+    assert ids["garden-coach"]["instructions_md"] == "You help with the garden. Be practical."
+
+    saved = client.put(f"/identities/{identity['id']}/instructions", json={"content_md": "v2 instructions"})
+    assert saved.status_code == 200 and saved.json()["version"] == 2
+
+    patched = client.patch(f"/identities/{identity['id']}", json={"status": "deactivated"})
+    assert patched.status_code == 200
+    assert patched.json()["status"] == "deactivated"
+
+    bad_status = client.patch(f"/identities/{identity['id']}", json={"status": "zombie"})
+    assert bad_status.status_code == 400
+    missing = client.patch("/identities/00000000-0000-0000-0000-000000000000", json={"status": "active"})
+    assert missing.status_code == 404
