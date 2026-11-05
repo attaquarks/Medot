@@ -74,7 +74,7 @@ export type Approval = {
   summary: string;
   status: string;
   channel: string;
-  created_at: string | null;
+  expires_at: string | null;
   decided_at: string | null;
 };
 

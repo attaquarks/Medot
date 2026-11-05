@@ -438,7 +438,7 @@ async def approvals_list(_: None = Depends(require_token)) -> dict:
     def _load() -> dict:
         pending = (
             client.table("approvals")
-            .select("id,action,summary,status,channel,created_at,decided_at")
+            .select("id,action,summary,status,channel,decided_at,expires_at")
             .eq("user_id", user_id)
             .eq("status", "pending")
             .order("id", desc=True)
@@ -448,7 +448,7 @@ async def approvals_list(_: None = Depends(require_token)) -> dict:
         )
         recent = (
             client.table("approvals")
-            .select("id,action,summary,status,channel,created_at,decided_at")
+            .select("id,action,summary,status,channel,decided_at,expires_at")
             .eq("user_id", user_id)
             .in_("status", ["approved", "denied", "expired"])
             .order("id", desc=True)
