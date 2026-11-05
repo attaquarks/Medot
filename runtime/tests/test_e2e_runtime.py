@@ -436,7 +436,7 @@ def test_identity_registry_end_to_end(runtime):
 
 
 def test_engine_slug_routes_to_specialist_end_to_end(runtime, mock_provider):
-    """M2b payoff, for real: '/garden-coach ...' routes the turn to that
+    """M2b payoff, for real: '/herb-coach ...' routes the turn to that
     identity — its instructions and its bound model profile drive the model."""
     client, _user_id, email, admin, _output = runtime
     base = f"http://127.0.0.1:{mock_provider.server_address[1]}/v1"
@@ -449,19 +449,20 @@ def test_engine_slug_routes_to_specialist_end_to_end(runtime, mock_provider):
     profile_id = saved.json()["id"]
 
     created = client.post("/identities", json={
-        "name": "Garden Coach",
-        "instructions_md": "You advise on gardens. Always mention soil.",
+        "name": "Herb Coach",
+        "instructions_md": "You advise on herbs. Always mention soil.",
     })
     assert created.status_code == 200, created.text
+    assert created.json()["slug"] == "herb-coach"
     identity_id = created.json()["id"]
     bound = client.patch(f"/identities/{identity_id}", json={"model_profile_id": profile_id})
     assert bound.status_code == 200
 
-    turn = client.post("/engine/test-turn", json={"text": "/garden-coach what should I plant?"})
+    turn = client.post("/engine/test-turn", json={"text": "/herb-coach what should I plant?"})
     assert turn.status_code == 200, f"engine turn failed: {turn.text[:400]}"
 
     system = next(m for m in mock_provider.last_body["messages"] if m["role"] == "system")
-    assert "You advise on gardens. Always mention soil." in system["content"], system["content"][:600]
+    assert "You advise on herbs. Always mention soil." in system["content"], system["content"][:600]
 
     from supabase import create_client
 
