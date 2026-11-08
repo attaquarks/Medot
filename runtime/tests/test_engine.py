@@ -11,7 +11,7 @@ from test_whatsapp_manager import FakeClient
 
 from medot.engine import wiring
 from medot.engine.turn import run_turn, seed_messages
-from medot.tools.registry import ToolDef, granted_tools
+from medot.tools.registry import DEFAULT_TOOLS, ToolDef, granted_tools
 from medot.whatsapp.manager import Envelope
 
 
@@ -185,19 +185,24 @@ def test_granted_tools_auto_seeds_me():
     client = FakeClient()
     client.tables.setdefault("identities", []).append({"id": "me-1", "user_id": "u1", "slug": "me"})
     tools = granted_tools(client, "u1", "me-1")
-    assert {t.key for t in tools} == {"knowledge.recall", "knowledge.remember", "knowledge.forget"}
+    assert {t.key for t in tools} == {t.key for t in DEFAULT_TOOLS}
     grants = client.tables["identity_tool_grants"]
     forget_grant = next(g for g in grants if g["tool_key"] == "knowledge.forget")
     assert forget_grant["requires_approval"] is True
 
 
-def test_grants_are_read_not_reseeded_when_present():
+def test_grants_keep_explicit_rows_and_fill_missing_tools():
+    """Existing grant rows are kept (never reseeded); missing default tools
+    are added for the identity (so new registry tools reach old identities)."""
     client = FakeClient()
     client.tables.setdefault("identities", []).append({"id": "me-1", "user_id": "u1", "slug": "me"})
-    client.tables.setdefault("identity_tool_grants", []).append({"identity_id": "me-1", "user_id": "u1", "tool_key": "knowledge.recall"})
+    client.tables.setdefault("identity_tool_grants", []).append(
+        {"id": "keep-1", "identity_id": "me-1", "user_id": "u1", "tool_key": "knowledge.recall", "requires_approval": False}
+    )
     tools = granted_tools(client, "u1", "me-1")
-    assert [t.key for t in tools] == ["knowledge.recall"]
-    assert len(client.tables["identity_tool_grants"]) == 1
+    assert {t.key for t in tools} == {t.key for t in DEFAULT_TOOLS}
+    kept = next(g for g in client.tables["identity_tool_grants"] if g.get("id") == "keep-1")
+    assert kept["tool_key"] == "knowledge.recall"  # the original row survived untouched
 
 
 # ---------------------------------------------------------------------------
@@ -472,7 +477,7 @@ async def test_apply_approval_decision_resumes_with_identity_tools(monkeypatch, 
     assert reply == "Done — forgot it."
     assert resumed["thread_id"] == "t-1" and resumed["decision"] == {"approved": True}
     # granted for the proposing identity (auto-seeded), not empty
-    assert len(resumed["tools"]) == 3
+    assert len(resumed["tools"]) == len(DEFAULT_TOOLS)
     approval = client.tables["approvals"][0]
     assert approval["status"] == "approved" and approval["decided_at"]
     runs = client.tables["agent_runs"]
@@ -482,3 +487,67 @@ async def test_apply_approval_decision_resumes_with_identity_tools(monkeypatch, 
     # persisted to the conversation (desktop reads it from DB)
     assert any(m["body"] == "Done — forgot it." for m in client.tables["messages"])
     assert manager.sent == []  # desktop transport: no WhatsApp send
+
+
+# ---------------------------------------------------------------------------
+# record capture (M3): save_record tool + grants that seed missing tools
+# ---------------------------------------------------------------------------
+def test_save_record_happy_path():
+    import asyncio
+
+    from medot.tools.registry import _save_record
+
+    client = FakeClient()
+    client.tables["knowledge_domains"] = [{"id": "dom-1", "user_id": "u1", "slug": "global"}]
+    client.tables["domain_schemas"] = [{"type_key": "health.weight_measurement", "title": "Weight measurement"}]
+
+    out = asyncio.run(_save_record(
+        client, "u1", "health.weight_measurement", {"weight_kg": 74.2}, "global", "2026-11-09T08:00:00+00:00"
+    ))
+    assert out["saved"] is True
+    row = client.tables["domain_records"][0]
+    assert row["domain_id"] == "dom-1" and row["type_key"] == "health.weight_measurement"
+    assert row["data"] == {"weight_kg": 74.2}
+    assert row["occurred_at"] == "2026-11-09T08:00:00+00:00"
+
+
+def test_save_record_unknown_type_lists_known():
+    import asyncio
+
+    from medot.tools.registry import _save_record
+
+    client = FakeClient()
+    client.tables["knowledge_domains"] = [{"id": "dom-1", "user_id": "u1", "slug": "global"}]
+    client.tables["domain_schemas"] = [{"type_key": "health.meal", "title": "Meal"}]
+
+    out = asyncio.run(_save_record(client, "u1", "health.bogus", {}, "global"))
+    assert out["error"].startswith("unknown record type")
+    assert out["known_types"] == ["health.meal"]
+    assert "domain_records" not in client.tables
+
+
+def test_save_record_unknown_domain():
+    import asyncio
+
+    from medot.tools.registry import _save_record
+
+    client = FakeClient()
+    client.tables["domain_schemas"] = [{"type_key": "health.meal", "title": "Meal"}]
+    out = asyncio.run(_save_record(client, "u1", "health.meal", {"description": "oats"}, "nowhere"))
+    assert "no area" in out["error"]
+
+
+def test_ensure_me_grants_seeds_missing_tools_for_existing_identities():
+    """An identity with old grants gains new registry tools on next use."""
+    from medot.tools.registry import DEFAULT_TOOLS, ensure_me_grants
+
+    client = FakeClient()
+    client.tables["identity_tool_grants"] = [
+        {"id": "g1", "user_id": "u1", "identity_id": "me-1", "tool_key": "knowledge.recall", "requires_approval": False},
+        {"id": "g2", "user_id": "u1", "identity_id": "me-1", "tool_key": "knowledge.remember", "requires_approval": False},
+        {"id": "g3", "user_id": "u1", "identity_id": "me-1", "tool_key": "knowledge.forget", "requires_approval": True},
+    ]
+    grants = ensure_me_grants(client, "u1", "me-1")
+    keys = {t.key for t in DEFAULT_TOOLS}
+    assert keys <= set(grants), "the new tool must be seeded for the existing identity"
+    assert len(client.tables["identity_tool_grants"]) == len(keys)

@@ -73,22 +73,30 @@ class _MockProvider(ThreadingHTTPServer):
                     # tests must not trigger the forget tool call
                     user_texts = [str(m.get("content", "")) for m in msgs if m.get("role") == "user"]
                     asked_to_forget = bool(user_texts) and "forget" in user_texts[-1].lower()
+                    asked_to_log = bool(user_texts) and "log my weight" in user_texts[-1].lower()
                     tool_ran = any(m.get("role") == "tool" for m in msgs)
+                    tool_call = None
                     if asked_to_forget and not tool_ran:
+                        tool_call = ("forget_fact", {"match": "the thing"})
+                    elif asked_to_log and not tool_ran:
+                        tool_call = ("save_record", {
+                            "type_key": "health.weight_measurement",
+                            "data": {"weight_kg": 74.2},
+                            "domain": "global",
+                        })
+                    if tool_call:
                         self._send({
                             "choices": [{"message": {
                                 "role": "assistant", "content": None,
                                 "tool_calls": [{
                                     "id": "call_1", "type": "function",
-                                    "function": {
-                                        "name": "forget_fact",
-                                        "arguments": json.dumps({"match": "the thing"}),
-                                    },
+                                    "function": {"name": tool_call[0], "arguments": json.dumps(tool_call[1])},
                                 }],
                             }}],
                         })
                     elif tool_ran:
-                        self._send({"choices": [{"message": {"content": "Done — forgot it."}}]})
+                        reply = "Logged it." if asked_to_log else "Done — forgot it."
+                        self._send({"choices": [{"message": {"content": reply}}]})
                     else:
                         self._send({"choices": [{"message": {"content": "OK"}}]})
                 else:
@@ -568,3 +576,31 @@ def test_knowledge_screen_end_to_end(runtime, mock_provider):
 
     missing = client.get("/knowledge/domains/00000000-0000-0000-0000-000000000000")
     assert missing.status_code == 404
+
+
+def test_record_capture_end_to_end(runtime, mock_provider):
+    """M3 record capture, for real: 'log my weight' -> the model calls
+    save_record -> a schema-validated domain_record row the Knowledge
+    screen's records browser serves back."""
+    client, _user_id, email, admin, _output = runtime
+
+    turn = client.post("/engine/test-turn", json={"text": "please log my weight 74.2"})
+    assert turn.status_code == 200, f"engine turn failed: {turn.text[:400]}"
+    assert "logged" in turn.json()["reply"].lower(), turn.json()
+
+    from supabase import create_client
+
+    as_user = create_client(os.environ["MEDOT_TEST_SUPABASE_URL"], os.environ["MEDOT_TEST_SUPABASE_KEY"])
+    as_user.postgrest.auth(
+        admin.auth.sign_in_with_password({"email": email, "password": "S3cret-Pass!"}).session.access_token
+    )
+    rows = as_user.table("domain_records").select("type_key,data,domain_id").execute().data
+    assert rows and rows[0]["type_key"] == "health.weight_measurement", rows
+    assert rows[0]["data"] == {"weight_kg": 74.2}, rows
+
+    domain_id = rows[0]["domain_id"]
+    served = client.get(f"/knowledge/domains/{domain_id}/records")
+    assert served.status_code == 200, served.text
+    records = served.json()["records"]
+    assert records and records[0]["type_title"] == "Weight measurement", records
+    assert records[0]["data"] == {"weight_kg": 74.2}, records

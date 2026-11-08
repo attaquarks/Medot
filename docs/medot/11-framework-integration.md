@@ -74,6 +74,13 @@ Model discovers & invokes → adapter re-validates: authenticated user, identity
 grants, approval requirement → only then dispatches to the AIA-proven handler
 ```
 
+The registry's built-in tools are the three knowledge tools (recall /
+remember / forget — forget requires approval) plus `save_record`
+(`knowledge.record_save`), which writes a schema-validated `domain_records`
+row (M3 record capture; the DB trigger is the validation authority).
+`ensure_me_grants` seeds **missing** default tools per identity on every
+build, so new tools reach existing identities automatically.
+
 Every adapter invocation **re-checks grants and approvals server-side** — the model
 can choose tools, never grant them. Existing AIA integration handlers
 (email/calendar/tasks/nutrition) are wrapped as `Tool` entries unchanged. Approval-

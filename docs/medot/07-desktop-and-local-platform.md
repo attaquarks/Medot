@@ -55,8 +55,8 @@ Implementation status (2026-11-09): **Overview, Identities, Knowledge,
 AI Providers, Activity and Settings are real** (Identities: create
 specialists, versioned instructions editor, activate/deactivate,
 model-profile binding; Knowledge: the Areas -> Topics -> Facts-with-dates
-explorer over `GET /knowledge*`, with a read-only structured-records
-browser — record capture is not built yet; Activity: pending approvals with
+explorer over `GET /knowledge*`, records browser included — record capture
+runs through conversation (the `save_record` tool), not console entry; Activity: pending approvals with
 Approve/Deny wired to `POST /approvals/{id}/decide`, recent decisions, event
 feed from `GET /activity`). Connectors and Browser remain placeholders
 pending their milestones; the full tabbed per-identity detail pages (below)

@@ -98,7 +98,7 @@ function DomainPanel({ data }: { data: DomainData }) {
       <div className="section-label">Records</div>
       <div className="entries" style={{ marginTop: 6 }}>
         {records.length === 0 && (
-          <EmptyRow text="No structured records yet — record capture arrives later." />
+          <EmptyRow text="No structured records yet — tell Me. something concrete, like “log my weight 74.2”." />
         )}
         {records.map((r) => {
           const pv = dataPreview(r.data);

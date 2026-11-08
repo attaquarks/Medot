@@ -98,9 +98,14 @@ Phase the repo in place; keep `main` working:
 > with topics/facts+dates, read-only record browser) served by
 > `GET /knowledge`, `GET /knowledge/domains/{id}` and `.../records`, rendered
 > by the desktop Knowledge screen. Ingestion shipped earlier (M3a extraction,
-> M3b retrieval into prompts). **Still open in M3: structured record
-> capture** (writing `domain_records` from conversations or manual entry —
-> the schemas are seeded, the write path is not).
+> M3b retrieval into prompts). **Record capture also shipped (2026-11-09):
+> the `save_record` tool (registry key `knowledge.record_save`, auto-granted)
+> writes schema-validated `domain_records` — the DB trigger stays the
+> authority; unknown types/domains fail with readable errors that list what
+> exists. Existing identities gain new registry tools automatically
+> (`ensure_me_grants` seeds missing tools per identity, not just first-time
+> sets). M3 is complete except record capture from manual console entry**
+> (conversation capture is live).
 
 3. **Milestone 2 — Identity registry**: `identities/` with CRUD + versioned instructions + model profiles; seed Me. as the first coordinator identity.
 4. **Milestone 3 — Knowledge system**: `KnowledgeService` over the new tables; ingestion from live conversations; record store + seed schemas.
