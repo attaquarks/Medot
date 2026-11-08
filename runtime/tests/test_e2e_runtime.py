@@ -74,6 +74,7 @@ class _MockProvider(ThreadingHTTPServer):
                     user_texts = [str(m.get("content", "")) for m in msgs if m.get("role") == "user"]
                     asked_to_forget = bool(user_texts) and "forget" in user_texts[-1].lower()
                     asked_to_log = bool(user_texts) and "log my weight" in user_texts[-1].lower()
+                    asked_to_roll = bool(user_texts) and "roll" in user_texts[-1].lower()
                     tool_ran = any(m.get("role") == "tool" for m in msgs)
                     tool_call = None
                     if asked_to_forget and not tool_ran:
@@ -84,6 +85,9 @@ class _MockProvider(ThreadingHTTPServer):
                             "data": {"weight_kg": 74.2},
                             "domain": "global",
                         })
+                    elif asked_to_roll and not tool_ran:
+                        # the connector's MCP tool, namespace-muxed
+                        tool_call = ("mcp__dice__roll_dice", {"sides": 6})
                     if tool_call:
                         self._send({
                             "choices": [{"message": {
@@ -95,7 +99,11 @@ class _MockProvider(ThreadingHTTPServer):
                             }}],
                         })
                     elif tool_ran:
-                        reply = "Logged it." if asked_to_log else "Done — forgot it."
+                        reply = (
+                            "Rolled it." if asked_to_roll
+                            else "Logged it." if asked_to_log
+                            else "Done — forgot it."
+                        )
                         self._send({"choices": [{"message": {"content": reply}}]})
                     else:
                         self._send({"choices": [{"message": {"content": "OK"}}]})
