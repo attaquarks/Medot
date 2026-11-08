@@ -73,18 +73,18 @@ async def _call_tool(connector: dict, headers: dict, tool_name: str, arguments: 
             return "\n".join(parts) or "(no output)"
 
 
-def _wrap_tool(connector: dict, headers: dict, prefix: str, raw) -> Any:
+def _wrap_tool(connector: dict, headers: dict, prefix: str, raw: dict) -> Any:
     from langchain_core.tools import StructuredTool
 
-    tool_name = f"{prefix}{raw.name}"
-    args_model = _args_model(tool_name, raw.inputSchema)
+    tool_name = f"{prefix}{raw['name']}"
+    args_model = _args_model(tool_name, raw.get("inputSchema"))
 
     async def _run(**kwargs):
-        return await _call_tool(connector, headers, raw.name, kwargs)
+        return await _call_tool(connector, headers, raw["name"], kwargs)
 
     return StructuredTool(
         name=tool_name,
-        description=(raw.description or raw.name)[:1000],
+        description=(raw.get("description") or raw["name"])[:1000],
         args_schema=args_model,
         coroutine=_run,
     )
@@ -182,7 +182,7 @@ async def load_tools(client, user_id: str, identity_id: str, keystore) -> list:
         wrapped = [
             _wrap_tool(row, headers, prefix, raw)
             for raw in listed
-            if f"{prefix}{raw.name}" not in own_names
+            if f"{prefix}{raw['name']}" not in own_names
         ]
         _cache[row["id"]] = (now, wrapped)
         tools.extend(wrapped)
