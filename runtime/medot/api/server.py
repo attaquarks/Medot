@@ -334,6 +334,143 @@ async def providers_verify(profile_id: str, _: None = Depends(require_token)) ->
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+# --------------------------- Connectors (M7) ---------------------------------
+
+class ConnectorBody(BaseModel):
+    provider: str = "custom"
+    account_label: str = ""
+    url: str
+    auth_header_name: str | None = None
+    auth_header_value: str | None = None
+
+
+class ConnectorPatchBody(BaseModel):
+    account_label: str | None = None
+    url: str | None = None
+    auth_header_name: str | None = None
+    auth_header_value: str | None = None
+    enabled: bool | None = None
+
+
+@app.get("/connectors/catalog")
+async def connectors_catalog(_: None = Depends(require_token)) -> dict:
+    """The one-click directory (capability descriptors, doc 08 §5)."""
+    from ..connectors import registry as connectors
+
+    return {"catalog": connectors.CATALOG}
+
+
+@app.get("/connectors")
+async def connectors_list(_: None = Depends(require_token)) -> dict:
+    from ..connectors import registry as connectors
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    rows = await asyncio.to_thread(connectors.list_connectors, client, user_id)
+    return {"connectors": rows}
+
+
+@app.post("/connectors")
+async def connectors_create(body: ConnectorBody, _: None = Depends(require_token)) -> dict:
+    from ..connectors import registry as connectors
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    try:
+        created = await asyncio.to_thread(
+            connectors.create_connector,
+            client,
+            user_id,
+            keystore_mod.get_keystore(),
+            provider=body.provider,
+            account_label=body.account_label,
+            url=body.url,
+            auth_header_name=body.auth_header_name,
+            auth_header_value=body.auth_header_value,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return created
+
+
+@app.patch("/connectors/{connector_id}")
+async def connectors_update(connector_id: str, body: ConnectorPatchBody, _: None = Depends(require_token)) -> dict:
+    from ..connectors import mcp as connectors_mcp
+    from ..connectors import registry as connectors
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    try:
+        updated = await asyncio.to_thread(
+            connectors.update_connector,
+            client,
+            user_id,
+            keystore_mod.get_keystore(),
+            connector_id,
+            account_label=body.account_label,
+            url=body.url,
+            auth_header_name=body.auth_header_name,
+            auth_header_value=body.auth_header_value,
+            enabled=body.enabled,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not updated:
+        raise HTTPException(status_code=404, detail="no such connector")
+    connectors_mcp.invalidate_cache(connector_id)
+    return updated
+
+
+@app.delete("/connectors/{connector_id}")
+async def connectors_delete(connector_id: str, _: None = Depends(require_token)) -> dict:
+    from ..connectors import mcp as connectors_mcp
+    from ..connectors import registry as connectors
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    removed = await asyncio.to_thread(
+        connectors.delete_connector, client, user_id, keystore_mod.get_keystore(), connector_id
+    )
+    if not removed:
+        raise HTTPException(status_code=404, detail="no such connector")
+    connectors_mcp.invalidate_cache(connector_id)
+    return {"ok": True}
+
+
+@app.post("/connectors/{connector_id}/test")
+async def connectors_test(connector_id: str, _: None = Depends(require_token)) -> dict:
+    """Live check: list the tools the server exposes right now."""
+    from ..connectors import mcp as connectors_mcp
+
+    user_id, client = await asyncio.to_thread(_user_client)
+
+    def _row():
+        rows = (
+            client.table("connector_accounts")
+            .select("id,provider,url,auth_header_name,enabled")
+            .eq("id", connector_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        return rows[0] if rows else None
+
+    row = await asyncio.to_thread(_row)
+    if not row:
+        raise HTTPException(status_code=404, detail="no such connector")
+    headers = {}
+    if row["auth_header_name"]:
+        secret = await asyncio.to_thread(
+            keystore_mod.get_keystore().get_secret, f"connectors.{user_id}.{row['id']}"
+        )
+        if secret:
+            headers[row["auth_header_name"]] = secret
+    try:
+        tools = await connectors_mcp.list_server_tools(row["url"], headers)
+    except Exception as exc:  # noqa: BLE001 - the console shows the reason
+        return {"ok": False, "error": str(exc)[:300], "tools": []}
+    connectors_mcp.invalidate_cache(connector_id)
+    return {"ok": True, "tools": [t["name"] for t in tools]}
+
+
 # --------------------------- Knowledge (M3) ----------------------------------
 
 @app.get("/knowledge")

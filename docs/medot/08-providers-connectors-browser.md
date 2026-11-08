@@ -111,6 +111,21 @@ Rules:
 
 ## 7. Temporary workers & MCP
 
+> **Shipped (2026-11-09, M7 v1):** the runtime is a working MCP client —
+> streamable-HTTP only (no stdio servers yet). Connectors are one-click for
+> the built-in directory (GitHub, Notion, Linear, Slack, Gmail, Google
+> Calendar, Drive) and paste-a-URL for custom servers, Claude-style. Tools
+> are namespace-muxed as `mcp__<server>__<tool>` — the doc's colon syntax is
+> not valid in OpenAI function names, so double underscores stand in (doc
+> deviation, deliberate). Connector URL + auth-header name live in
+> `connector_accounts` (migration 0002); the header VALUE lives in the OS
+> keystore. Tools are cached 5 min per connector and invalidated on edit.
+> **V1 limitations, honest:** no per-action approval on MCP tool calls yet
+> (our own destructive tools still gate through the interrupt); OAuth-broker
+> connectors accept a pasted token instead of a brokered OAuth flow; stdio
+> subprocess servers are not supported.
+
+
 - Temporary task workers inherit the owning identity's model profile and a
   **scope-limited toolset** (own domain reads + explicit task tools); they
   never mutate the registry or another identity's domain.

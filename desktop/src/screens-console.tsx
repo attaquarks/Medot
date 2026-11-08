@@ -3,6 +3,7 @@ import { api, type Session, type WaStatus } from "./lib/api";
 
 export { Identities } from "./screens-identities";
 export { Knowledge } from "./screens-knowledge";
+export { Connectors } from "./screens-connectors";
 
 type ScreenProps = { wa: WaStatus | null; user: Session | null };
 
@@ -98,38 +99,6 @@ export function Overview({ wa, onConnect, go }: { wa: WaStatus | null; onConnect
     </>
   );
 }
-
-function ComingSoon({ title, milestone, note }: { title: string; milestone: string; note: string }) {
-  return (
-    <>
-      <div className="page-heading">
-        <h1>{title}</h1>
-        <p className="subline">{note}</p>
-      </div>
-      <div className="entries">
-        <section className="entry">
-          <div className="entry-title">Arrives with {milestone}</div>
-          <div className="entry-sub">
-            Me. is already listening on WhatsApp, and what you share is being
-            remembered already.
-          </div>
-        </section>
-      </div>
-    </>
-  );
-}
-
-export function Connectors(_: ScreenProps) {
-  return (
-    <ComingSoon
-      title="Connectors"
-      milestone="milestone 7"
-      note="Email, calendar and task accounts — connected accounts Me. may use, per identity."
-    />
-  );
-}
-
-
 
 export function Activity({ wa }: ScreenProps) {
   return (

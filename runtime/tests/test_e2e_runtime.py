@@ -604,3 +604,83 @@ def test_record_capture_end_to_end(runtime, mock_provider):
     records = served.json()["records"]
     assert records and records[0]["type_title"] == "Weight measurement", records
     assert records[0]["data"] == {"weight_kg": 74.2}, records
+
+
+@pytest.fixture(scope="module")
+def mcp_dice_server():
+    """A REAL MCP server (streamable-HTTP) running inside the test process."""
+    import threading
+
+    from mcp.server.mcpserver import MCPServer
+
+    calls: list[int] = []
+    server = MCPServer("medot-e2e-dice")
+
+    @server.tool()
+    def roll_dice(sides: int = 6) -> str:
+        calls.append(sides)
+        return f"rolled a {sides}-sider: it landed on 4"
+
+    port = _free_port(MOCK_PORT + 200)
+    url = f"http://127.0.0.1:{port}/mcp"
+
+    def _serve():
+        import asyncio
+
+        asyncio.run(server.run_streamable_http_async(host="127.0.0.1", port=port, stateless_http=True))
+
+    thread = threading.Thread(target=_serve, daemon=True)
+    thread.start()
+    import time as _time
+
+    for _ in range(60):
+        try:
+            httpx.post(url, json={"jsonrpc": "2.0", "method": "ping", "id": 1}, timeout=1)
+            break
+        except Exception:
+            _time.sleep(0.25)
+    yield url, calls
+
+
+def test_connector_mcp_end_to_end(runtime, mock_provider, mcp_dice_server):
+    """M7, for real: one-click add a connector pointing at a live MCP server,
+    list its tools, then a real conversation turn executes its tool."""
+    client, _user_id, _email, _admin, _output = runtime
+    url, calls = mcp_dice_server
+    saved = client.post(
+        "/providers/profiles",
+        json={"name": "E2E Chat", "purpose": "chat", "provider": "openai_compatible",
+              "model": "mock-large", "api_base": f"http://127.0.0.1:{mock_provider.server_address[1]}/v1",
+              "api_key": "sk-e2e"},
+    )
+    assert saved.status_code == 200
+
+    catalog = client.get("/connectors/catalog")
+    assert catalog.status_code == 200
+    assert any(c["key"] == "github" for c in catalog.json()["catalog"])
+
+    created = client.post("/connectors", json={"provider": "dice", "account_label": "Dice", "url": url})
+    assert created.status_code == 200, created.text
+    connector_id = created.json()["id"]
+
+    tested = client.post(f"/connectors/{connector_id}/test")
+    assert tested.status_code == 200, tested.text
+    assert tested.json()["ok"] is True and "roll_dice" in tested.json()["tools"], tested.json()
+
+    bad = client.post("/connectors", json={"provider": "nope", "url": "http://127.0.0.1:1/mcp"})
+    assert bad.status_code == 200  # creation succeeds; the test button catches dead servers
+    dead_test = client.post(f"/connectors/{bad.json()['id']}/test")
+    assert dead_test.status_code == 200 and dead_test.json()["ok"] is False, dead_test.text
+
+    turn = client.post("/engine/test-turn", json={"text": "please roll a dice"})
+    assert turn.status_code == 200, f"engine turn failed: {turn.text[:400]}"
+    assert "rolled" in turn.json()["reply"].lower(), turn.json()
+    assert calls == [6], f"the MCP tool must have executed server-side: {calls}"
+
+    listing = client.get("/connectors")
+    assert [c["enabled"] for c in listing.json()["connectors"]] == [True, True]
+
+    deleted = client.delete(f"/connectors/{connector_id}")
+    assert deleted.status_code == 200
+    gone = client.post(f"/connectors/{connector_id}/test")
+    assert gone.status_code == 404

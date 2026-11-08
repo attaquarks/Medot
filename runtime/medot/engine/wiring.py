@@ -414,6 +414,13 @@ async def _run_inbound_flow(client, user_id: str, peer: str, transport: str, tex
         identity_id = await asyncio.to_thread(me_identity_id, client, user_id)
         tools = await asyncio.to_thread(_tools_for_me, client, user_id)
         instructions = await asyncio.to_thread(me_instructions, client, user_id)
+    if identity_id:
+        # M7: connectors granted to this identity add their MCP tools
+        from ..connectors import mcp as connectors_mcp
+
+        mcp_tools = await connectors_mcp.load_tools(client, user_id, identity_id, get_keystore())
+        if mcp_tools:
+            tools = [*tools, *mcp_tools]
     recalled = await asyncio.to_thread(retrieve_knowledge, client, user_id, text)
     if recalled:
         instructions = f"{instructions}\n\n{recalled}"

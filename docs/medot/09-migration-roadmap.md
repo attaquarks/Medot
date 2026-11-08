@@ -112,6 +112,13 @@ Phase the repo in place; keep `main` working:
 5. **Milestone 4 — Generic runtime**: refactor BaseAgent → registry-driven engine; Me. coordinator + activation router; background invocation; approvals. *AIA's two agents become seed identities here and the old packages are archived.*
 6. **Milestone 5 — WhatsApp**: provider-access spike (Agent Manager/API surface), relay service design + authorization (OD-13), Transport interface with Agent Platform implementation, agent-link onboarding (API key -> keystore), dedupe/ordering/reconnect. Old AIA gateway archived.
 7. **Milestone 6 — Desktop console**: full UI over the local API.
+**> M7 progress (2026-11-09): connector registry shipped as MCP v1** —
+> directory one-click + custom URL connectors, tools flow into the agent
+> graph through the same LangChain interface as built-ins, per-identity
+> grants seed for Me. on connect. Still open in M7: OAuth broker flows,
+> stdio local MCP servers, per-action approvals for connector tools, and
+> the browser capability.
+
 8. **Milestone 7 — Connectors**: migrate email/calendar/tasks providers under the registry; browser capability.
 9. **Milestone 8 — Packaging**: Windows installer, auto-update, recovery tests; macOS/Linux after.
 

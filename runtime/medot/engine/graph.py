@@ -30,22 +30,31 @@ class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
 
 
-def _litellm_tool_schema(tool: ToolDef) -> dict:
-    schema = tool.args_model.model_json_schema()
-    schema.pop("title", None)
-    schema.pop("additionalProperties", None)
+def _tool_schema(tool: Any) -> dict:
+    """OpenAI function schema for either a Medot ToolDef or a LangChain tool
+    (MCP connectors arrive as StructuredTools)."""
+    args_model = getattr(tool, "args_model", None) or getattr(tool, "args_schema", None)
+    if hasattr(args_model, "model_json_schema"):
+        schema = args_model.model_json_schema()
+        schema.pop("title", None)
+        schema.pop("additionalProperties", None)
+    else:
+        schema = {"type": "object", "properties": {}}
+    description = getattr(tool, "description", "") or tool.name
     return {
         "type": "function",
-        "function": {"name": tool.name, "description": tool.description, "parameters": schema},
+        "function": {"name": tool.name, "description": description[:1000], "parameters": schema},
     }
 
 
 class AgentGraphs:
     """Compiled-turn factory: model + granted tools + system prompt."""
 
-    def __init__(self, model: Any, tools: list[ToolDef], system_prompt: str, checkpointer: Any = None):
+    def __init__(self, model: Any, tools: list, system_prompt: str, checkpointer: Any = None):
         self.model = model
-        self.tools = {t.name: t for t in tools}
+        registry_tools = [t for t in tools if isinstance(t, ToolDef)]
+        self.tools = {t.name: t for t in registry_tools}
+        self.langchain_tools = {t.name: t for t in tools if not isinstance(t, ToolDef)}
         self.system_prompt = system_prompt
         self.checkpointer = checkpointer
         self._compiled = None
@@ -56,7 +65,8 @@ class AgentGraphs:
 
         model = self.model
         tool_defs = self.tools
-        tool_schemas = [_litellm_tool_schema(t) for t in tool_defs.values()]
+        lc_tools = self.langchain_tools
+        tool_schemas = [_tool_schema(t) for t in [*tool_defs.values(), *lc_tools.values()]]
         system_prompt = self.system_prompt
 
         async def agent_node(state: AgentState) -> dict:
@@ -68,22 +78,26 @@ class AgentGraphs:
             last = state["messages"][-1]
             results: list[ToolMessage] = []
             for call in last.tool_calls or []:
-                tool = tool_defs.get(call["name"])
-                if tool is None:
-                    results.append(ToolMessage(content="unknown tool", tool_call_id=call["id"]))
-                    continue
                 args = call.get("args") or {}
-                if tool.requires_approval:
-                    decision = interrupt({"tool": tool.name, "args": args, "proposal": tool.proposal(args)})
-                    if not decision or not decision.get("approved"):
-                        results.append(ToolMessage(content="denied by the user", tool_call_id=call["id"]))
-                        continue
-                handler_args = dict(args)
-                try:
-                    outcome = await tool.handler(_CLIENT["client"], _CLIENT["user_id"], **handler_args)
-                    content = json.dumps(outcome, default=str)
-                except Exception as exc:  # noqa: BLE001 - tool errors reach the model, not the log only
-                    content = f"error: {exc}"
+                tool = tool_defs.get(call["name"])
+                if tool is not None:
+                    if tool.requires_approval:
+                        decision = interrupt({"tool": tool.name, "args": args, "proposal": tool.proposal(args)})
+                        if not decision or not decision.get("approved"):
+                            results.append(ToolMessage(content="denied by the user", tool_call_id=call["id"]))
+                            continue
+                    try:
+                        outcome = await tool.handler(_CLIENT["client"], _CLIENT["user_id"], **dict(args))
+                        content = json.dumps(outcome, default=str)
+                    except Exception as exc:  # noqa: BLE001 - tool errors reach the model, not the log only
+                        content = f"error: {exc}"
+                elif call["name"] in lc_tools:
+                    try:
+                        content = str(await lc_tools[call["name"]].ainvoke(dict(args)))
+                    except Exception as exc:  # noqa: BLE001
+                        content = f"error: {exc}"
+                else:
+                    content = "unknown tool"
                 results.append(ToolMessage(content=content[:2000], tool_call_id=call["id"]))
             return {"messages": results}
 

@@ -58,9 +58,10 @@ model-profile binding; Knowledge: the Areas -> Topics -> Facts-with-dates
 explorer over `GET /knowledge*`, records browser included — record capture
 runs through conversation (the `save_record` tool), not console entry; Activity: pending approvals with
 Approve/Deny wired to `POST /approvals/{id}/decide`, recent decisions, event
-feed from `GET /activity`). Connectors and Browser remain placeholders
-pending their milestones; the full tabbed per-identity detail pages (below)
-arrive with those surfaces.
+feed from `GET /activity`; Connectors: Claude-style — a one-click directory
+plus custom MCP-server-by-URL, live tool test per connector). Browser
+remains a placeholder pending its milestone; the full tabbed per-identity
+detail pages (below) arrive with those surfaces.
 
 ## 3. Identity detail pages (per identity, including Me.)
 
