@@ -92,6 +92,16 @@ Phase the repo in place; keep `main` working:
 
 1. **Docs & skeleton** (this PR): `docs/medot/` + new folder skeleton; old code untouched.
 2. **Milestone 1 — Foundation**: Supabase project + schema migrations + RLS tests; runtime gains `supabase/` + `localstore/`; Google sign-in from Desktop. AIA code still runs.
+
+> Progress (2026-11-09): M3 is functionally complete for reads —
+> `medot/knowledge/service.py` (the KnowledgeService: overview, area detail
+> with topics/facts+dates, read-only record browser) served by
+> `GET /knowledge`, `GET /knowledge/domains/{id}` and `.../records`, rendered
+> by the desktop Knowledge screen. Ingestion shipped earlier (M3a extraction,
+> M3b retrieval into prompts). **Still open in M3: structured record
+> capture** (writing `domain_records` from conversations or manual entry —
+> the schemas are seeded, the write path is not).
+
 3. **Milestone 2 — Identity registry**: `identities/` with CRUD + versioned instructions + model profiles; seed Me. as the first coordinator identity.
 4. **Milestone 3 — Knowledge system**: `KnowledgeService` over the new tables; ingestion from live conversations; record store + seed schemas.
 5. **Milestone 4 — Generic runtime**: refactor BaseAgent → registry-driven engine; Me. coordinator + activation router; background invocation; approvals. *AIA's two agents become seed identities here and the old packages are archived.*

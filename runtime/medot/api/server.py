@@ -334,6 +334,38 @@ async def providers_verify(profile_id: str, _: None = Depends(require_token)) ->
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+# --------------------------- Knowledge (M3) ----------------------------------
+
+@app.get("/knowledge")
+async def knowledge_overview(_: None = Depends(require_token)) -> dict:
+    """Areas -> counts, the plain-language summary the Knowledge screen opens on."""
+    from ..knowledge import service as knowledge
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    return await asyncio.to_thread(knowledge.overview, client, user_id)
+
+
+@app.get("/knowledge/domains/{domain_id}")
+async def knowledge_domain(domain_id: str, _: None = Depends(require_token)) -> dict:
+    """One area: topics and facts with dates."""
+    from ..knowledge import service as knowledge
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    detail = await asyncio.to_thread(knowledge.domain_detail, client, user_id, domain_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="no such area")
+    return detail
+
+
+@app.get("/knowledge/domains/{domain_id}/records")
+async def knowledge_domain_records(domain_id: str, _: None = Depends(require_token)) -> dict:
+    """Structured records in an area (read-only browser)."""
+    from ..knowledge import service as knowledge
+
+    user_id, client = await asyncio.to_thread(_user_client)
+    return await asyncio.to_thread(knowledge.records, client, user_id, domain_id)
+
+
 # --------------------------- Identity registry (M2b) -------------------------
 
 class IdentityCreateBody(BaseModel):

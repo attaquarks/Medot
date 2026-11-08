@@ -526,3 +526,45 @@ def test_console_approve_decide_end_to_end(runtime, mock_provider):
     assert any(s["status"] == "approved" for s in statuses), statuses
     runs = as_user.table("agent_runs").select("status").execute().data
     assert any(r["status"] == "succeeded" for r in runs), runs
+
+
+def test_knowledge_screen_end_to_end(runtime, mock_provider):
+    """M3, for real: a remembered fact shows up in the Knowledge reads the
+    console makes — overview counts, area detail, records browser."""
+    client, user_id, email, admin, _output = runtime
+
+    from supabase import create_client
+
+    as_user = create_client(os.environ["MEDOT_TEST_SUPABASE_URL"], os.environ["MEDOT_TEST_SUPABASE_KEY"])
+    as_user.postgrest.auth(
+        admin.auth.sign_in_with_password({"email": email, "password": "S3cret-Pass!"}).session.access_token
+    )
+    domain_id = as_user.table("knowledge_domains").select("id").eq("slug", "global").limit(1).execute().data[0]["id"]
+    node = as_user.table("knowledge_nodes").insert({
+        "user_id": user_id, "domain_id": domain_id, "node_type": "entity",
+        "name": "Priya", "summary": "the user's sister",
+    }).execute().data[0]
+    as_user.table("knowledge_edges").insert({
+        "user_id": user_id, "domain_id": domain_id,
+        "src_node_id": node["id"], "dst_node_id": node["id"],
+        "relation": "is allergic to", "fact": "Priya is allergic to peanuts",
+    }).execute()
+
+    overview = client.get("/knowledge")
+    assert overview.status_code == 200, overview.text
+    domains = {d["slug"]: d for d in overview.json()["domains"]}
+    assert "global" in domains, domains
+    assert domains["global"]["facts"] >= 1 and domains["global"]["topics"] >= 1, domains["global"]
+
+    detail = client.get(f"/knowledge/domains/{domain_id}")
+    assert detail.status_code == 200, detail.text
+    facts = [f["fact"] for f in detail.json()["facts"]]
+    assert "Priya is allergic to peanuts" in facts, facts
+    topics = [t["name"] for t in detail.json()["topics"]]
+    assert "Priya" in topics, topics
+
+    records = client.get(f"/knowledge/domains/{domain_id}/records")
+    assert records.status_code == 200 and records.json()["records"] == [], records.text
+
+    missing = client.get("/knowledge/domains/00000000-0000-0000-0000-000000000000")
+    assert missing.status_code == 404

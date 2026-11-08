@@ -51,13 +51,16 @@ Activity        runs, approvals, fact changes timeline
 Settings        profile, timezone, privacy, backups, diagnostics
 ```
 
-Implementation status (2026-11-06): **Overview, Identities, AI Providers,
-Activity and Settings are real** (Identities: create specialists, versioned
-instructions editor, activate/deactivate, model-profile binding; Activity:
-pending approvals with Approve/Deny wired to `POST /approvals/{id}/decide`,
-recent decisions, event feed from `GET /activity`). Knowledge, Connectors and
-Browser remain placeholders pending their milestones; the full tabbed
-per-identity detail pages (below) arrive with those surfaces.
+Implementation status (2026-11-09): **Overview, Identities, Knowledge,
+AI Providers, Activity and Settings are real** (Identities: create
+specialists, versioned instructions editor, activate/deactivate,
+model-profile binding; Knowledge: the Areas -> Topics -> Facts-with-dates
+explorer over `GET /knowledge*`, with a read-only structured-records
+browser — record capture is not built yet; Activity: pending approvals with
+Approve/Deny wired to `POST /approvals/{id}/decide`, recent decisions, event
+feed from `GET /activity`). Connectors and Browser remain placeholders
+pending their milestones; the full tabbed per-identity detail pages (below)
+arrive with those surfaces.
 
 ## 3. Identity detail pages (per identity, including Me.)
 

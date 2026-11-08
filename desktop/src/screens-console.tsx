@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type Session, type WaStatus } from "./lib/api";
 
 export { Identities } from "./screens-identities";
+export { Knowledge } from "./screens-knowledge";
 
 type ScreenProps = { wa: WaStatus | null; user: Session | null };
 
@@ -115,16 +116,6 @@ function ComingSoon({ title, milestone, note }: { title: string; milestone: stri
         </section>
       </div>
     </>
-  );
-}
-
-export function Knowledge(_: ScreenProps) {
-  return (
-    <ComingSoon
-      title="Knowledge"
-      milestone="milestone 3"
-      note="Your life as a private knowledge space — areas, topics, facts with dates."
-    />
   );
 }
 
