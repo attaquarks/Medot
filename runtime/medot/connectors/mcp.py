@@ -67,7 +67,8 @@ async def _call_tool(connector: dict, headers: dict, tool_name: str, arguments: 
                 text = getattr(part, "text", None)
                 if text is not None:
                     parts.append(text)
-            if getattr(result, "isError", False):
+            # mcp 2.x renamed isError -> is_error; accept both
+            if getattr(result, "is_error", None) or getattr(result, "isError", False):
                 raise RuntimeError("; ".join(parts) or "the connector reported an error")
             return "\n".join(parts) or "(no output)"
 
@@ -103,8 +104,13 @@ async def list_server_tools(url: str, headers: dict) -> list[dict]:
         async with ClientSession(read, write) as session:
             await session.initialize()
             listed = await session.list_tools()
+            # mcp 2.x renamed inputSchema -> input_schema; accept both
             return [
-                {"name": t.name, "description": t.description or "", "inputSchema": t.inputSchema}
+                {
+                    "name": t.name,
+                    "description": t.description or "",
+                    "inputSchema": getattr(t, "input_schema", None) or getattr(t, "inputSchema", None),
+                }
                 for t in listed.tools
             ]
 
